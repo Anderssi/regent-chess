@@ -8,7 +8,7 @@ export interface GameViewerProps {
   startFen?: string;
   analysis?: GameAnalysis | null;
   orientation?: "white" | "black";
-  /** Keep jumping to the newest move as moves arrive (live games). */
+  /** Open on the final position and keep jumping to the newest move as moves arrive (live games). */
   followLatest?: boolean;
 }
 

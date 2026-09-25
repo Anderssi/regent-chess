@@ -49,7 +49,12 @@ Stockfish doesn't output Elo ratings, so the app keeps two numbers:
 
 ## Board design
 
-The board is in `src/client/components/Board.tsx` and all its styling is in `src/client/theme.ts`. A `BoardTheme` sets the square colors, highlights and a `renderPiece` function. To restyle the board, add a theme, for example one with SVG or image pieces.
+The board is isometric pixel art with a wizard's-tower theme. The whole scene is drawn at native resolution (288 × 194 px) and scaled up by a whole number (×2 = 576 × 388 px), so the pixels stay crisp. The board keeps that size on wide screens and only scales down when the screen is narrower.
+
+- `src/client/theme.ts` holds everything visual: tile, slab, sky, candle and highlight colors, the piece palettes for each side, and the piece sprites. Sprites are 16 px wide text grids using the palette keys (`o` outline, `b` base, `s` shade, `h` highlight, `a` accent, `d` shadow, `e` glow). To redesign, edit or copy `wizardTheme`.
+- `src/client/iso/render.ts` is the renderer: isometric geometry, drawing back to front, coordinates engraved on the slab, and the candle and star animation (turned off when the OS asks for reduced motion). It draws onto any `PixelTarget`, which is the canvas in the app and a pixel buffer in tests.
+- Preview a design without starting the app: `bun scripts/render-board.ts "<fen>" board.png white 3` writes a PNG.
+- The canvas is hidden from screen readers. A visually hidden grid lists every square and its piece instead.
 
 ## Tests
 
@@ -59,7 +64,7 @@ bun run typecheck
 ```
 
 - `test/unit`: rules, game loop (timeouts, retries, draws), UCI parsing, engine players, analysis, Elo math, storage (including the migration from Claude-era databases) and the service
-- `test/client`: board and game viewer components (happy-dom)
+- `test/client`: renderer (sprites, isometric geometry, pieces drawn on the right squares, highlights) and the board and game viewer components (happy-dom)
 - `test/integration`: real Stockfish (1600-Elo play, analysis), real Lc0 (a legal first move within the limit, and full Lc0 vs Stockfish games as each color), engine crash and restart handling, and the HTTP API. The Lc0 tests skip if `lc0` isn't installed.
 
 ## Layout
@@ -67,5 +72,6 @@ bun run typecheck
 ```
 src/shared   rules, types, notation parsing (used by server and client)
 src/server   Bun server: API, game loop, players (Lc0, Stockfish), UCI engine, analysis, SQLite
-src/client   React UI (served by Bun's HTML bundler)
+src/client   React UI (served by Bun's HTML bundler); iso/ is the pixel-art renderer
+scripts      render-board.ts: PNG preview of the board
 ```

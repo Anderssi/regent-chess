@@ -30,13 +30,17 @@ describe("client", () => {
     expect(container.querySelector("[data-square]")!.getAttribute("data-square")).toBe("h1");
   });
 
-  test("Board uses a custom theme's piece renderer", async () => {
+  test("Board draws on a fixed-size pixel canvas and labels squares for screen readers", async () => {
     const { render } = await import("@testing-library/react");
     const { Board } = await import("../../src/client/components/Board.tsx");
-    const { classicTheme } = await import("../../src/client/theme.ts");
-    const theme = { ...classicTheme, renderPiece: (p: string) => <i data-testid="custom">{p}</i> };
-    const { getAllByTestId } = render(<Board fen="8/8/8/8/8/8/8/K6k w - - 0 1" theme={theme} />);
-    expect(getAllByTestId("custom").map((e) => e.textContent).sort()).toEqual(["bk", "wk"]);
+    const { SCENE_W, SCENE_H } = await import("../../src/client/iso/render.ts");
+    const { container } = render(<Board fen="4k3/8/8/8/8/8/8/4K2R w - - 0 1" />);
+    const canvas = container.querySelector("canvas")!;
+    expect(canvas.getAttribute("width")).toBe(String(SCENE_W));
+    expect(canvas.getAttribute("height")).toBe(String(SCENE_H));
+    expect((container.querySelector(".board") as HTMLElement).style.width).toBe(`${SCENE_W * 2}px`);
+    expect(container.querySelector('[data-square="h1"]')!.getAttribute("aria-label")).toBe("h1, white rook");
+    expect(container.querySelector('[data-square="d4"]')!.getAttribute("aria-label")).toBe("d4, empty");
   });
 
   test("GameViewer steps through moves", async () => {

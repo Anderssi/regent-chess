@@ -13,6 +13,14 @@ export function PlayMode() {
   const refreshStatus = useCallback(() => api.status().then(setStatus).catch((e) => setError(e.message)), []);
   useEffect(() => void refreshStatus(), [refreshStatus]);
 
+  // Open on the most recent game (live or finished), so the board is never empty.
+  useEffect(() => {
+    api
+      .listGames("date", "desc")
+      .then((games) => setGame((current) => current ?? games[0] ?? null))
+      .catch((e) => setError(e.message));
+  }, []);
+
   // Poll the live game until it is finished and analysed.
   useEffect(() => {
     if (!game) return;
@@ -49,13 +57,20 @@ export function PlayMode() {
         )}
       </div>
       {error && <p className="error">{error}</p>}
+      {!game && (
+        <>
+          <h2>The board awaits</h2>
+          <p className="muted">Start a game to watch Lc0 face Stockfish.</p>
+          <GameViewer sanMoves={[]} orientation="white" />
+        </>
+      )}
       {game && (
         <>
           <h2>
             {game.white} vs {game.black}
           </h2>
           <p className="muted">{describeOutcome(game)}</p>
-          <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.aiColor} followLatest={game.status === "in_progress"} />
+          <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.aiColor} followLatest />
         </>
       )}
     </section>
