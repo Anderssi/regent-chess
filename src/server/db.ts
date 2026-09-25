@@ -11,14 +11,14 @@ interface GameRow {
   created_at: string;
   finished_at: string | null;
   status: GameStatus;
-  claude_color: Color;
+  ai_color: Color;
   white: string;
   black: string;
   result: GameResult | null;
   termination: Termination | null;
   san_moves: string;
   pgn: string;
-  claude_elo_estimate: number | null;
+  ai_elo_estimate: number | null;
   rating_before: number | null;
   rating_after: number | null;
   error: string | null;
@@ -37,27 +37,35 @@ export class GameStore {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       finished_at TEXT,
       status TEXT NOT NULL,
-      claude_color TEXT NOT NULL,
+      ai_color TEXT NOT NULL,
       white TEXT NOT NULL,
       black TEXT NOT NULL,
       result TEXT,
       termination TEXT,
       san_moves TEXT NOT NULL DEFAULT '[]',
       pgn TEXT NOT NULL DEFAULT '',
-      claude_elo_estimate INTEGER,
+      ai_elo_estimate INTEGER,
       rating_before INTEGER,
       rating_after INTEGER,
       error TEXT,
       analysis TEXT
     )`);
+    this.migrate();
   }
 
-  create(game: { claudeColor: Color; white: string; black: string }): GameRecord {
+  /** Databases from when our AI was Claude used claude_* column names. */
+  private migrate(): void {
+    const columns = new Set(this.db.query<{ name: string }, []>("PRAGMA table_info(games)").all().map((c) => c.name));
+    if (columns.has("claude_color")) this.db.run("ALTER TABLE games RENAME COLUMN claude_color TO ai_color");
+    if (columns.has("claude_elo_estimate")) this.db.run("ALTER TABLE games RENAME COLUMN claude_elo_estimate TO ai_elo_estimate");
+  }
+
+  create(game: { aiColor: Color; white: string; black: string }): GameRecord {
     const row = this.db
       .query<GameRow, [Color, string, string]>(
-        "INSERT INTO games (status, claude_color, white, black) VALUES ('in_progress', ?, ?, ?) RETURNING *",
+        "INSERT INTO games (status, ai_color, white, black) VALUES ('in_progress', ?, ?, ?) RETURNING *",
       )
-      .get(game.claudeColor, game.white, game.black)!;
+      .get(game.aiColor, game.white, game.black)!;
     return toRecord(row);
   }
 
@@ -96,10 +104,10 @@ export class GameStore {
       );
   }
 
-  saveAnalysis(id: number, analysis: GameAnalysis, claudeEloEstimate: number): void {
+  saveAnalysis(id: number, analysis: GameAnalysis, aiEloEstimate: number): void {
     this.db
-      .query("UPDATE games SET analysis = ?, claude_elo_estimate = ? WHERE id = ?")
-      .run(JSON.stringify(analysis), claudeEloEstimate, id);
+      .query("UPDATE games SET analysis = ?, ai_elo_estimate = ? WHERE id = ?")
+      .run(JSON.stringify(analysis), aiEloEstimate, id);
   }
 
   get(id: number): GameRecord | null {
@@ -112,17 +120,17 @@ export class GameStore {
     // Games without an estimate sort last either way.
     const orderBy =
       sort === "elo"
-        ? `claude_elo_estimate IS NULL, claude_elo_estimate ${dir}, id ${dir}`
+        ? `ai_elo_estimate IS NULL, ai_elo_estimate ${dir}, id ${dir}`
         : `created_at ${dir}, id ${dir}`;
     return this.db.query<GameRow, []>(`SELECT * FROM games ORDER BY ${orderBy}`).all().map(toRecord);
   }
 
-  /** The colour Claude played in the most recent finished game, if any. Aborted games don't count. */
-  lastClaudeColor(): Color | null {
+  /** The colour our AI played in the most recent finished game, if any. Aborted games don't count. */
+  lastAiColor(): Color | null {
     const row = this.db
-      .query<{ claude_color: Color }, []>("SELECT claude_color FROM games WHERE status = 'finished' ORDER BY id DESC LIMIT 1")
+      .query<{ ai_color: Color }, []>("SELECT ai_color FROM games WHERE status = 'finished' ORDER BY id DESC LIMIT 1")
       .get();
-    return row?.claude_color ?? null;
+    return row?.ai_color ?? null;
   }
 
   latestRating(): number | null {
@@ -152,14 +160,14 @@ function toRecord(row: GameRow): GameRecord {
     createdAt: row.created_at,
     finishedAt: row.finished_at,
     status: row.status,
-    claudeColor: row.claude_color,
+    aiColor: row.ai_color,
     white: row.white,
     black: row.black,
     result: row.result,
     termination: row.termination,
     sanMoves: JSON.parse(row.san_moves),
     pgn: row.pgn,
-    claudeEloEstimate: row.claude_elo_estimate,
+    aiEloEstimate: row.ai_elo_estimate,
     ratingBefore: row.rating_before,
     ratingAfter: row.rating_after,
     error: row.error,

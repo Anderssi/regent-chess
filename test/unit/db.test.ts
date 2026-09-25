@@ -10,7 +10,7 @@ const analysis = (elo: number): GameAnalysis => ({
 });
 
 function finishedGame(store: GameStore, elo: number | null, rating = 1500) {
-  const g = store.create({ claudeColor: "white", white: "Claude", black: "Stockfish" });
+  const g = store.create({ aiColor: "white", white: "Lc0", black: "Stockfish" });
   store.finish(g.id, {
     status: "finished",
     result: "1-0",
@@ -30,7 +30,7 @@ describe("GameStore", () => {
     const store = new GameStore();
     const id = finishedGame(store, 1800);
     const game = store.get(id)!;
-    expect(game).toMatchObject({ status: "finished", result: "1-0", sanMoves: ["f3", "e5"], pgn: "1. f3 e5", claudeEloEstimate: 1800 });
+    expect(game).toMatchObject({ status: "finished", result: "1-0", sanMoves: ["f3", "e5"], pgn: "1. f3 e5", aiEloEstimate: 1800 });
     expect(game.analysis?.white.estimatedElo).toBe(1800);
   });
 
@@ -55,17 +55,42 @@ describe("GameStore", () => {
     const store = new GameStore();
     expect(store.latestRating()).toBeNull();
     finishedGame(store, 1500, 1520);
-    const aborted = store.create({ claudeColor: "black", white: "S", black: "C" });
+    const aborted = store.create({ aiColor: "black", white: "S", black: "C" });
     store.finish(aborted.id, { status: "aborted", result: null, termination: null, sanMoves: [], pgn: "", error: "x", ratingBefore: null, ratingAfter: null });
     expect(store.latestRating()).toBe(1520);
-    // The aborted game (Claude as Black) doesn't count for colour alternation either.
-    expect(store.lastClaudeColor()).toBe("white");
+    // The aborted game (Lc0 as Black) doesn't count for colour alternation either.
+    expect(store.lastAiColor()).toBe("white");
   });
 
   test("marks games left in progress as aborted", () => {
     const store = new GameStore();
-    const g = store.create({ claudeColor: "white", white: "C", black: "S" });
+    const g = store.create({ aiColor: "white", white: "C", black: "S" });
     expect(store.abortStale()).toBe(1);
     expect(store.get(g.id)!.status).toBe("aborted");
   });
+});
+
+test("migrates databases created when our AI was Claude", async () => {
+  const { Database } = await import("bun:sqlite");
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "regent-db-"));
+  const path = join(dir, "old.sqlite");
+  const old = new Database(path);
+  old.run(`CREATE TABLE games (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL DEFAULT '2026-01-01', finished_at TEXT,
+    status TEXT NOT NULL, claude_color TEXT NOT NULL, white TEXT NOT NULL, black TEXT NOT NULL, result TEXT,
+    termination TEXT, san_moves TEXT NOT NULL DEFAULT '[]', pgn TEXT NOT NULL DEFAULT '', claude_elo_estimate INTEGER,
+    rating_before INTEGER, rating_after INTEGER, error TEXT, analysis TEXT)`);
+  old.run("INSERT INTO games (status, claude_color, white, black, claude_elo_estimate) VALUES ('finished', 'black', 'S', 'Claude', 1650)");
+  old.close();
+
+  const store = new GameStore(path);
+  expect(store.get(1)).toMatchObject({ aiColor: "black", aiEloEstimate: 1650, black: "Claude" });
+  store.create({ aiColor: "white", white: "Lc0", black: "S" });
+  expect(store.list()).toHaveLength(2);
+  store.close();
+  new GameStore(path).close(); // migrating twice is harmless
+  rmSync(dir, { recursive: true, force: true });
 });

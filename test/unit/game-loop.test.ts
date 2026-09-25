@@ -71,10 +71,10 @@ describe("playGame", () => {
   });
 
   test("a PlayerFailure aborts the game without a result", async () => {
-    const white = scriptedPlayer("W", [() => Promise.reject(new PlayerFailure("invalid API key"))]);
+    const white = scriptedPlayer("W", [() => Promise.reject(new PlayerFailure("engine crashed"))]);
     const out = await playGame({ white, black: scriptedPlayer("B", []) });
     expect(out).toMatchObject({ status: "aborted", result: null });
-    expect(out.error).toContain("invalid API key");
+    expect(out.error).toContain("engine crashed");
   });
 
   test("stalemate is a draw", async () => {

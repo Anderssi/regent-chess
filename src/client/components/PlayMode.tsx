@@ -44,7 +44,7 @@ export function PlayMode() {
         </button>
         {status && (
           <span className="muted">
-            Claude's rating: <strong>{status.rating}</strong> · next game Claude plays {game?.status === "in_progress" ? game.claudeColor : status.nextClaudeColor} · Stockfish {STOCKFISH_ELO} · {MOVE_TIME_LIMIT_MS / 1000}s per move
+            Lc0's rating: <strong>{status.rating}</strong> · next game Lc0 plays {game?.status === "in_progress" ? game.aiColor : status.nextAiColor} · Stockfish {STOCKFISH_ELO} · {MOVE_TIME_LIMIT_MS / 1000}s per move
           </span>
         )}
       </div>
@@ -55,7 +55,7 @@ export function PlayMode() {
             {game.white} vs {game.black}
           </h2>
           <p className="muted">{describeOutcome(game)}</p>
-          <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.claudeColor} followLatest={game.status === "in_progress"} />
+          <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.aiColor} followLatest={game.status === "in_progress"} />
         </>
       )}
     </section>

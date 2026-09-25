@@ -23,17 +23,17 @@ test("a full game against real Stockfish is played, stored, rated and analysed",
   const analysis = await launchEngine();
   engines.push(play, analysis);
 
-  // A trivial bot stands in for Claude so the test needs no API key.
+  // A trivial bot stands in for our AI to keep this test fast; real Lc0 is covered in lc0.test.ts.
   const service = new GameService({
     store,
-    createClaudePlayer: () => firstMovePlayer("Stand-in"),
+    createAiPlayer: async () => firstMovePlayer("Stand-in"),
     createStockfishPlayer: () => StockfishPlayer.create(play, 30),
     getAnalysisEngine: async () => analysis,
     analysisDepth: 4,
   });
 
   const started = await service.startGame();
-  expect(started.claudeColor).toBe("white");
+  expect(started.aiColor).toBe("white");
   await service.waitForActiveGame();
 
   const game = service.getGame(started.id)!;
@@ -46,9 +46,9 @@ test("a full game against real Stockfish is played, stored, rated and analysed",
   expect(game.ratingBefore).toBe(1500);
   expect(game.ratingAfter).not.toBeNull();
   expect(game.analysis?.plies).toHaveLength(game.sanMoves.length);
-  expect(game.claudeEloEstimate).toBe(game.analysis!.white.estimatedElo);
+  expect(game.aiEloEstimate).toBe(game.analysis!.white.estimatedElo);
 
-  // Next game Claude plays Black.
-  expect(service.nextClaudeColor()).toBe("black");
+  // Next game our AI plays Black.
+  expect(service.nextAiColor()).toBe("black");
   store.close();
 }, 180_000);

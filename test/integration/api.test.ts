@@ -15,19 +15,19 @@ let gate: Promise<void> = Promise.resolve();
 beforeAll(async () => {
   const { engine } = fakeEngine();
   await engine.init();
-  let claudeWhite = true;
-  // Claude plays the losing side of Fool's mate; the first move waits on `gate` so tests can observe a live game.
+  let aiWhite = true;
+  // Lc0 plays the losing side of Fool's mate; the first move waits on `gate` so tests can observe a live game.
   const gated = (moves: string[]): Player => {
     const p = scriptedPlayer("x", moves);
-    return { name: "Claude", getMove: async (req) => (await gate, p.getMove(req)) };
+    return { name: "Lc0", getMove: async (req) => (await gate, p.getMove(req)) };
   };
   service = new GameService({
     store: new GameStore(),
-    createClaudePlayer: () => {
-      claudeWhite = service.nextClaudeColor() === "white";
-      return gated(claudeWhite ? ["f3", "g4"] : ["e5", "Qh4#"]);
+    createAiPlayer: async () => {
+      aiWhite = service.nextAiColor() === "white";
+      return gated(aiWhite ? ["f3", "g4"] : ["e5", "Qh4#"]);
     },
-    createStockfishPlayer: async () => ({ ...scriptedPlayer("x", claudeWhite ? ["e5", "Qh4#"] : ["f3", "g4"]), name: "Stockfish (1600)" }),
+    createStockfishPlayer: async () => ({ ...scriptedPlayer("x", aiWhite ? ["e5", "Qh4#"] : ["f3", "g4"]), name: "Stockfish (1600)" }),
     getAnalysisEngine: async () => engine,
     analysisDepth: 1,
   });
@@ -41,8 +41,8 @@ const post = (path: string, body?: unknown) =>
   fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 
 describe("HTTP API", () => {
-  test("status reports the starting rating and Claude's next colour", async () => {
-    expect(await (await get("/api/status")).json()).toEqual({ rating: 1500, playing: false, nextClaudeColor: "white" });
+  test("status reports the starting rating and Lc0's next colour", async () => {
+    expect(await (await get("/api/status")).json()).toEqual({ rating: 1500, playing: false, nextAiColor: "white" });
   });
 
   test("starting a game, rejecting a second one while it runs, then reading the result", async () => {
@@ -51,7 +51,7 @@ describe("HTTP API", () => {
     const res = await post("/api/games");
     expect(res.status).toBe(201);
     const game = (await res.json()) as GameRecord;
-    expect(game).toMatchObject({ status: "in_progress", claudeColor: "white" });
+    expect(game).toMatchObject({ status: "in_progress", aiColor: "white" });
 
     expect((await post("/api/games")).status).toBe(409);
     release();
@@ -72,10 +72,10 @@ describe("HTTP API", () => {
 
   test("games can be listed sorted by estimated Elo", async () => {
     gate = Promise.resolve();
-    await post("/api/games"); // Claude as Black wins this one
+    await post("/api/games"); // Lc0 as Black wins this one
     await service.waitForActiveGame();
     const byElo = (await (await get("/api/games?sort=elo&order=desc")).json()) as GameRecord[];
-    const elos = byElo.map((g) => g.claudeEloEstimate!);
+    const elos = byElo.map((g) => g.aiEloEstimate!);
     expect(elos).toHaveLength(2);
     expect(elos).toEqual([...elos].sort((a, b) => b - a));
     const asc = (await (await get("/api/games?sort=elo&order=asc")).json()) as GameRecord[];

@@ -3,7 +3,7 @@ import type { GameAnalysis, GameRecord } from "../shared/types.ts";
 export interface Status {
   rating: number;
   playing: boolean;
-  nextClaudeColor: "white" | "black";
+  nextAiColor: "white" | "black";
 }
 
 export interface PastedAnalysis {

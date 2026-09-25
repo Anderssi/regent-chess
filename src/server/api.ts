@@ -8,7 +8,7 @@ const error = (message: string, status: number) => json({ error: message }, stat
 export function apiRoutes(service: GameService) {
   return {
     "/api/status": {
-      GET: () => json({ rating: service.currentRating(), playing: service.isPlaying(), nextClaudeColor: service.nextClaudeColor() }),
+      GET: () => json({ rating: service.currentRating(), playing: service.isPlaying(), nextAiColor: service.nextAiColor() }),
     },
     "/api/games": {
       GET: (req: Request) => {

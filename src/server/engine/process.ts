@@ -9,7 +9,7 @@ import { UciEngine, type UciTransport } from "./uci.ts";
  */
 export function resolveEngineCommand(env: Record<string, string | undefined> = process.env): string[] {
   if (env.STOCKFISH_PATH) return [env.STOCKFISH_PATH];
-  const native = findNativeStockfish(env.PATH);
+  const native = findNative("stockfish", env.PATH);
   if (native) return [native];
   const node = Bun.which("node", { PATH: env.PATH ?? "" });
   const wasmJs = join(import.meta.dir, "../../../node_modules/stockfish/bin/stockfish-19-lite-single.js");
@@ -20,12 +20,23 @@ export function resolveEngineCommand(env: Record<string, string | undefined> = p
 }
 
 /**
- * A `stockfish` binary on PATH, skipping node_modules/.bin: `bun run` puts that on PATH, and the npm
+ * Leela Chess Zero: LC0_PATH, else `lc0` on PATH. The Homebrew build (`brew install lc0`)
+ * ships with a default network next to the binary, which Lc0 finds on its own.
+ */
+export function resolveLc0Command(env: Record<string, string | undefined> = process.env): string[] {
+  if (env.LC0_PATH) return [env.LC0_PATH];
+  const native = findNative("lc0", env.PATH);
+  if (native) return [native];
+  throw new Error("Leela Chess Zero (lc0) not found. Install it with `brew install lc0` or set LC0_PATH.");
+}
+
+/**
+ * A binary on PATH, skipping node_modules/.bin: `bun run` puts that on PATH, and the npm stockfish
  * package's `stockfish` there is a wrapper script, not an engine (it needs a postinstall step Bun blocks).
  */
-function findNativeStockfish(path = ""): string | null {
+function findNative(name: string, path = ""): string | null {
   const dirs = path.split(delimiter).filter((dir) => dir && !dir.split(sep).includes("node_modules"));
-  return Bun.which("stockfish", { PATH: dirs.join(delimiter) });
+  return Bun.which(name, { PATH: dirs.join(delimiter) });
 }
 
 export function spawnTransport(cmd: string[]): UciTransport {
@@ -39,7 +50,7 @@ export function spawnTransport(cmd: string[]): UciTransport {
   proc.exited.then(async (code) => {
     await Bun.sleep(50); // let the last stderr output arrive
     const detail = stderrTail.trim() ? `: ${stderrTail.trim()}` : "";
-    const error = new Error(`Stockfish process (${cmd.join(" ")}) exited with code ${code}${detail}`);
+    const error = new Error(`Engine process (${cmd.join(" ")}) exited with code ${code}${detail}`);
     for (const l of exitListeners) l(error);
   });
   (async () => {
@@ -61,7 +72,7 @@ export function spawnTransport(cmd: string[]): UciTransport {
         proc.stdin.write(line + "\n");
         proc.stdin.flush();
       } catch (err) {
-        throw new Error(`Could not write to Stockfish process (${cmd.join(" ")}): ${(err as Error).message}`);
+        throw new Error(`Could not write to engine process (${cmd.join(" ")}): ${(err as Error).message}`);
       }
     },
     onExit(listener) {
@@ -79,8 +90,8 @@ export function spawnTransport(cmd: string[]): UciTransport {
   };
 }
 
-export async function launchEngine(cmd = resolveEngineCommand()): Promise<UciEngine> {
-  const engine = new UciEngine(spawnTransport(cmd), `Stockfish (${cmd.join(" ")})`);
+export async function launchEngine(cmd = resolveEngineCommand(), name = "Stockfish"): Promise<UciEngine> {
+  const engine = new UciEngine(spawnTransport(cmd), `${name} (${cmd.join(" ")})`);
   try {
     await engine.init();
   } catch (err) {

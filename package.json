@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.128.0",
     "chess.js": "^1.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

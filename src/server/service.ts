@@ -10,7 +10,7 @@ import type { Player } from "./players.ts";
 
 export interface GameServiceDeps {
   store: GameStore;
-  createClaudePlayer: () => Player;
+  createAiPlayer: () => Promise<Player>;
   createStockfishPlayer: () => Promise<Player>;
   /** A full-strength engine used only for analysis. */
   getAnalysisEngine: () => Promise<UciEngine>;
@@ -25,9 +25,9 @@ export class GameService {
 
   constructor(private deps: GameServiceDeps) {}
 
-  /** Claude alternates colours from game to game, starting with White. */
-  nextClaudeColor(): Color {
-    return this.deps.store.lastClaudeColor() === "white" ? "black" : "white";
+  /** Our AI alternates colours from game to game, starting with White. */
+  nextAiColor(): Color {
+    return this.deps.store.lastAiColor() === "white" ? "black" : "white";
   }
 
   currentRating(): number {
@@ -41,13 +41,13 @@ export class GameService {
   /** Start a game in the background. Only one game runs at a time. */
   async startGame(): Promise<GameRecord> {
     if (this.active) throw new GameInProgressError("A game is already in progress");
-    const claude = this.deps.createClaudePlayer();
+    const ai = await this.deps.createAiPlayer();
     const stockfish = await this.deps.createStockfishPlayer();
-    const claudeColor = this.nextClaudeColor();
-    const [white, black] = claudeColor === "white" ? [claude, stockfish] : [stockfish, claude];
-    const game = this.deps.store.create({ claudeColor, white: white.name, black: black.name });
+    const aiColor = this.nextAiColor();
+    const [white, black] = aiColor === "white" ? [ai, stockfish] : [stockfish, ai];
+    const game = this.deps.store.create({ aiColor, white: white.name, black: black.name });
 
-    this.active = this.runGame(game.id, claudeColor, white, black).finally(() => {
+    this.active = this.runGame(game.id, aiColor, white, black).finally(() => {
       this.active = null;
     });
     return game;
@@ -58,7 +58,7 @@ export class GameService {
     await this.active;
   }
 
-  private async runGame(id: number, claudeColor: Color, white: Player, black: Player): Promise<void> {
+  private async runGame(id: number, aiColor: Color, white: Player, black: Player): Promise<void> {
     const { store } = this.deps;
     const outcome = await playGame({
       white,
@@ -72,7 +72,7 @@ export class GameService {
     let ratingAfter: number | null = null;
     if (outcome.status === "finished" && outcome.result) {
       ratingBefore = this.currentRating();
-      const score = outcome.result === "1/2-1/2" ? 0.5 : (outcome.result === "1-0") === (claudeColor === "white") ? 1 : 0;
+      const score = outcome.result === "1/2-1/2" ? 0.5 : (outcome.result === "1-0") === (aiColor === "white") ? 1 : 0;
       ratingAfter = updateRating(ratingBefore, STOCKFISH_ELO, score, RATING_K_FACTOR);
     }
     store.finish(id, { ...outcome, ratingBefore, ratingAfter });
@@ -80,7 +80,7 @@ export class GameService {
     if (outcome.status === "finished" && outcome.sanMoves.length > 0) {
       try {
         const analysis = await this.analyse(outcome.sanMoves);
-        store.saveAnalysis(id, analysis, analysis[claudeColor].estimatedElo);
+        store.saveAnalysis(id, analysis, analysis[aiColor].estimatedElo);
       } catch (err) {
         console.error(`Analysis of game ${id} failed:`, err);
       }

@@ -86,7 +86,9 @@ export class UciEngine {
 
   /** Serialise engine conversations: UCI engines handle one search at a time. */
   private exclusive<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(fn, fn);
+    // Fail before registering any waiters once the engine is dead, so nothing is left unobserved.
+    const guarded = () => (this.deadError ? Promise.reject(this.deadError) : fn());
+    const run = this.queue.then(guarded, guarded);
     this.queue = run.catch(() => undefined);
     return run;
   }
@@ -123,10 +125,11 @@ export class UciEngine {
     await ready;
   }
 
-  /** Search a position. Give either `movetimeMs` or `depth`. */
-  search(fen: string, limit: { movetimeMs?: number; depth?: number }): Promise<SearchResult> {
+  /** Search a position. Give one of `movetimeMs`, `depth` or `nodes`. */
+  search(fen: string, limit: { movetimeMs?: number; depth?: number; nodes?: number }): Promise<SearchResult> {
     return this.exclusive(async () => {
-      const goArgs = limit.depth != null ? `depth ${limit.depth}` : `movetime ${limit.movetimeMs ?? 1000}`;
+      const goArgs =
+        limit.depth != null ? `depth ${limit.depth}` : limit.nodes != null ? `nodes ${limit.nodes}` : `movetime ${limit.movetimeMs ?? 1000}`;
       const timeout = (limit.movetimeMs ?? 0) + 60_000;
       const done = this.waitFor((l) => l.startsWith("bestmove"), timeout);
       this.send(`position fen ${fen}`);

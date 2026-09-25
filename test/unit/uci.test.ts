@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseInfoLine, parseSearchOutput, scoreToCp } from "../../src/server/engine/uci.ts";
-import { StockfishPlayer } from "../../src/server/players.ts";
+import { Lc0Player, PlayerFailure, StockfishPlayer, type MoveRequest } from "../../src/server/players.ts";
+import { UciEngine } from "../../src/server/engine/uci.ts";
 import { fakeEngine } from "../helpers/fakes.ts";
 
 describe("UCI parsing", () => {
@@ -79,4 +80,53 @@ describe("StockfishPlayer", () => {
     expect(sent).toContain("setoption name UCI_Elo value 1600");
     expect(sent).toContain("go movetime 4000");
   });
+});
+
+const startRequest = (): MoveRequest => ({
+  fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  color: "white",
+  sanHistory: [],
+  legalMoves: [],
+  rejectedAttempts: [],
+  timeLeftMs: 5000,
+  signal: new AbortController().signal,
+});
+
+describe("Lc0Player", () => {
+  test("plays at full strength and loads its network before the clock starts", async () => {
+    const { engine, sent } = fakeEngine();
+    await engine.init();
+    const player = await Lc0Player.create(engine, 4000);
+    expect(player.name).toBe("Lc0");
+    expect(sent).toContain("go nodes 1"); // warm-up search
+    expect(sent.some((l) => l.includes("UCI_LimitStrength") || l.includes("UCI_Elo"))).toBe(false);
+    sent.length = 0;
+    expect(await player.getMove(startRequest())).toMatch(/^[a-h][1-8][a-h][1-8]$/);
+    expect(sent).toContain("go movetime 4000");
+  });
+
+  test("never searches past the time left on the clock", async () => {
+    const { engine, sent } = fakeEngine();
+    await engine.init();
+    const player = await Lc0Player.create(engine, 4000);
+    await player.getMove({ ...startRequest(), timeLeftMs: 1000 });
+    expect(sent).toContain("go movetime 750");
+  });
+});
+
+test("an engine that dies mid-game aborts the game instead of losing on time", async () => {
+  let exit: (e: Error) => void = () => {};
+  const engine = new UciEngine({
+    write: () => {},
+    onLine: () => {},
+    onExit: (l) => void (exit = l),
+    close: () => {},
+  });
+  const { EnginePlayer } = await import("../../src/server/players.ts");
+  const player = new EnginePlayer("Lc0", engine, 1000);
+  const move = player.getMove(startRequest());
+  exit(new Error("Engine process (lc0) exited with code 139"));
+  const err = await move.catch((e) => e);
+  expect(err).toBeInstanceOf(PlayerFailure);
+  expect(err.message).toContain("exited with code 139");
 });

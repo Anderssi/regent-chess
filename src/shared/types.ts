@@ -48,15 +48,15 @@ export interface GameRecord {
   createdAt: string;
   finishedAt: string | null;
   status: GameStatus;
-  claudeColor: Color;
+  aiColor: Color;
   white: string;
   black: string;
   result: GameResult | null;
   termination: Termination | null;
   sanMoves: string[];
   pgn: string;
-  /** Per-game Elo estimate for Claude from Stockfish analysis. */
-  claudeEloEstimate: number | null;
+  /** Per-game Elo estimate for our AI from Stockfish analysis. */
+  aiEloEstimate: number | null;
   /** Running rating from results, before and after this game. */
   ratingBefore: number | null;
   ratingAfter: number | null;
