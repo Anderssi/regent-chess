@@ -22,12 +22,19 @@ We need to create a web app that let's "our ai" play games against stockfish api
 ## Rules apart from chess rules.
 - Thinking time is limited to 5 seconds per move/player.
 - Stockfish elo rating should be 1600 done by setting
-```text
-```
+```typescript
 engine.configure({
     "UCI_LimitStrength": True,
     "UCI_Elo": 1600
 })
 ```
+```
+
+## Tech stack
+- Bun (typescript)
+- stockfish engine
+- antrhopic api
+- react frontend
+
 ```
 /goal we have a chess game app running with proper unit and integration tests.
