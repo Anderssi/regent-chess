@@ -9,7 +9,7 @@ export function App() {
   return (
     <main className="app">
       <header className="box">
-        <h1>Regent Chess</h1>
+        <h1>SchackMars</h1>
         <nav role="tablist">
           <button role="tab" aria-selected={mode === "play"} onClick={() => setMode("play")}>
             Play

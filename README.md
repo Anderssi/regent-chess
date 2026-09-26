@@ -1,4 +1,4 @@
-# Regent Chess App
+# SchackMars
 
 Our AI, **Pluto**, plays chess against Stockfish (limited to 1600 Elo) and builds up a rating. Under the hood Pluto is [Leela Chess Zero](https://lczero.org/) (Lc0); the rest of this README calls it Lc0 when talking about the engine. Games are stored in algebraic notation and can be replayed and analysed with Stockfish, as can any game you paste in.
 

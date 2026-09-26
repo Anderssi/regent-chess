@@ -32,7 +32,7 @@ const server = Bun.serve({
   development: process.env.NODE_ENV !== "production",
 });
 
-console.log(`Regent Chess running at ${server.url}`);
+console.log(`SchackMars running at ${server.url}`);
 
 // Check the engines up front so problems show here rather than as a failed game start.
 for (const [name, resolve, handle] of [

@@ -64,7 +64,7 @@ export class GameService {
       white,
       black,
       moveTimeLimitMs: this.deps.moveTimeLimitMs ?? MOVE_TIME_LIMIT_MS,
-      headers: { Event: "Regent Chess", Site: "Regent Chess", Date: new Date().toISOString().slice(0, 10).replaceAll("-", ".") },
+      headers: { Event: "SchackMars", Site: "SchackMars", Date: new Date().toISOString().slice(0, 10).replaceAll("-", ".") },
       onMove: (_san, sanMoves) => store.updateMoves(id, sanMoves, ""),
     });
 
