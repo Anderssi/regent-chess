@@ -138,6 +138,9 @@ button.wide { width: 100%; }
   .side-panel.info { align-self: stretch; }
 }
 .analyse-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.side-panel .hide-panel { float: right; margin-left: 8px; }
+.analyse-bar { display: flex; align-items: center; gap: 12px; flex: none; overflow-wrap: anywhere; }
+.analyse-bar .info h2 { margin: 0; }
 textarea { width: 100%; padding: 10px; border: 2px solid var(--border); background: var(--surface); margin-bottom: 8px; font-family: var(--serif); }
 textarea::placeholder { color: var(--muted); font-style: italic; }
 .game-list { list-style: none; padding: 0; margin: 8px 0 0; }

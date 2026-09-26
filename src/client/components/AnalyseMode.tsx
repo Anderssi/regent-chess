@@ -30,6 +30,7 @@ export function AnalyseMode() {
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<Status["agents"] | null>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
+  const [panelHidden, setPanelHidden] = useState(false);
 
   useEffect(() => {
     api.listGames(sort, order).then(setGames).catch((e) => setError(e.message));
@@ -96,69 +97,92 @@ export function AnalyseMode() {
     }
   };
 
+  const gameInfo = selected && (
+    <p className="muted">
+      {selected.subtitle}
+      {selected.pgnUrl && (
+        <>
+          {" · "}
+          <a href={selected.pgnUrl}>Download PGN</a>
+        </>
+      )}
+    </p>
+  );
+
+  // Once a game is open the picker can be folded away, leaving a slim bar with the game's title.
+  const hidden = panelHidden && selected !== null;
+
   return (
     <section className="mode with-side analyse">
-      <aside className="box side-panel">
-        <div className="info">
-          {selected ? (
-            <>
-              <h2>{selected.title}</h2>
-              <p className="muted">
-                {selected.subtitle}
-                {selected.pgnUrl && (
-                  <>
-                    {" · "}
-                    <a href={selected.pgnUrl}>Download PGN</a>
-                  </>
-                )}
-              </p>
-            </>
-          ) : (
-            <p className="muted">Pick a previous game or paste one to analyse it.</p>
-          )}
-        </div>
-        <h3>Paste a game</h3>
-        <textarea
-          value={pasted}
-          onChange={(e) => setPasted(e.target.value)}
-          placeholder="PGN or moves, e.g. 1. e4 e5 2. Nf3 Nc6 3. Bb5"
-          rows={6}
-        />
-        <button className="primary" onClick={analysePasted} disabled={analysing || !pasted.trim()}>
-          {analysing ? "Analysing with Stockfish…" : "Analyse"}
-        </button>
-        {error && <p className="error">{error}</p>}
-
-        <h3>Previous games</h3>
-        <div className="toolbar">
-          <label>
-            Sort by{" "}
-            <select value={sort} onChange={(e) => setSort(e.target.value as "date" | "elo")} aria-label="Sort by">
-              <option value="date">Date</option>
-              <option value="elo">Est. Elo</option>
-            </select>
-          </label>
-          <button onClick={() => setOrder(order === "desc" ? "asc" : "desc")} aria-label="Toggle sort order">
-            {order === "desc" ? "↓ desc" : "↑ asc"}
+      {!hidden && (
+        <aside className="box side-panel">
+          <div className="info">
+            {selected ? (
+              <>
+                <button className="hide-panel" onClick={() => setPanelHidden(true)} aria-label="Hide game picker">
+                  « Hide
+                </button>
+                <h2>{selected.title}</h2>
+                {gameInfo}
+              </>
+            ) : (
+              <p className="muted">Pick a previous game or paste one to analyse it.</p>
+            )}
+          </div>
+          <h3>Paste a game</h3>
+          <textarea
+            value={pasted}
+            onChange={(e) => setPasted(e.target.value)}
+            placeholder="PGN or moves, e.g. 1. e4 e5 2. Nf3 Nc6 3. Bb5"
+            rows={6}
+          />
+          <button className="primary" onClick={analysePasted} disabled={analysing || !pasted.trim()}>
+            {analysing ? "Analysing with Stockfish…" : "Analyse"}
           </button>
-        </div>
-        <ul className="game-list">
-          {games.length === 0 && <li className="muted">No games yet.</li>}
-          {games.map((g) => (
-            <li key={g.id}>
-              <button onClick={() => openGame(g)}>
-                <span>#{g.id} {AI_NAME} as {g.aiColor}</span>
-                <span className={`badge ${aiScore(g) ?? g.status}`}>{g.result ?? g.status.replace("_", " ")}</span>
-                <span className="muted">
-                  Elo {g.aiEloEstimate ?? "—"}
-                  {agentNote(g) && ` · ${agentNote(g)}`}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
+          {error && <p className="error">{error}</p>}
+
+          <h3>Previous games</h3>
+          <div className="toolbar">
+            <label>
+              Sort by{" "}
+              <select value={sort} onChange={(e) => setSort(e.target.value as "date" | "elo")} aria-label="Sort by">
+                <option value="date">Date</option>
+                <option value="elo">Est. Elo</option>
+              </select>
+            </label>
+            <button onClick={() => setOrder(order === "desc" ? "asc" : "desc")} aria-label="Toggle sort order">
+              {order === "desc" ? "↓ desc" : "↑ asc"}
+            </button>
+          </div>
+          <ul className="game-list">
+            {games.length === 0 && <li className="muted">No games yet.</li>}
+            {games.map((g) => (
+              <li key={g.id}>
+                <button onClick={() => openGame(g)}>
+                  <span>#{g.id} {AI_NAME} as {g.aiColor}</span>
+                  <span className={`badge ${aiScore(g) ?? g.status}`}>{g.result ?? g.status.replace("_", " ")}</span>
+                  <span className="muted">
+                    Elo {g.aiEloEstimate ?? "—"}
+                    {agentNote(g) && ` · ${agentNote(g)}`}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
       <div className="analyse-main">
+        {hidden && (
+          <div className="box analyse-bar">
+            <button onClick={() => setPanelHidden(false)} aria-label="Show game picker">
+              » Games
+            </button>
+            <div className="info">
+              <h2>{selected.title}</h2>
+              {gameInfo}
+            </div>
+          </div>
+        )}
         <GameViewer
           key={selected ? selected.title + selected.sanMoves.length : "empty"}
           sanMoves={selected?.sanMoves ?? []}
