@@ -45,18 +45,27 @@ export function PlayMode() {
   const busy = game?.status === "in_progress" || status?.playing;
 
   return (
-    <section className="mode">
-      <div className="box info">
-        <div className="toolbar">
-          <button className="primary" onClick={start} disabled={!!busy}>
-            {busy ? "Game in progress…" : "Start new game"}
-          </button>
-          {status && (
-            <span className="muted">
-              {AI_NAME}'s rating: <strong>{status.rating}</strong> · next game {AI_NAME} plays {game?.status === "in_progress" ? game.aiColor : status.nextAiColor} · Stockfish {STOCKFISH_ELO} · {MOVE_TIME_LIMIT_MS / 1000}s per move
-            </span>
-          )}
-        </div>
+    <section className="mode with-side">
+      <aside className="box side-panel info">
+        <button className="primary wide" onClick={start} disabled={!!busy}>
+          {busy ? "Game in progress…" : "Start new game"}
+        </button>
+        {status && (
+          <dl className="stats">
+            <dt>{AI_NAME}'s rating</dt>
+            <dd>
+              <strong>{status.rating}</strong>
+            </dd>
+            <dt>Next game</dt>
+            <dd>
+              {AI_NAME} plays {game?.status === "in_progress" ? game.aiColor : status.nextAiColor}
+            </dd>
+            <dt>Opponent</dt>
+            <dd>Stockfish {STOCKFISH_ELO}</dd>
+            <dt>Time</dt>
+            <dd>{MOVE_TIME_LIMIT_MS / 1000} s per move</dd>
+          </dl>
+        )}
         {error && <p className="error">{error}</p>}
         {game ? (
           <>
@@ -71,7 +80,7 @@ export function PlayMode() {
             <p className="muted">Start a game to watch {AI_NAME} face Stockfish.</p>
           </>
         )}
-      </div>
+      </aside>
       {game ? (
         <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.aiColor} followLatest />
       ) : (

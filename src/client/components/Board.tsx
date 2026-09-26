@@ -122,14 +122,16 @@ function useSceneSize(boxRef: React.RefObject<HTMLDivElement | null>, minScale: 
     };
     const observer = new ResizeObserver(update);
     observer.observe(stage);
-    // Panels above the stage can grow (text loading in) and push it down without resizing it.
-    observer.observe(document.body);
     window.addEventListener("resize", update);
     // The stage moves when the page scrolls (narrow screens), so keep the board on it.
     window.addEventListener("scroll", update, { passive: true });
+    // Panels around the stage can grow (text loading in) and move it without resizing anything the
+    // observer watches; a cheap periodic check catches that. Unchanged layouts don't re-render.
+    const poll = setInterval(update, 250);
     update();
     return () => {
       observer.disconnect();
+      clearInterval(poll);
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update);
     };

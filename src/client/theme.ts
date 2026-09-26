@@ -3,6 +3,8 @@
  * Swap in a new theme to redesign the board without touching the renderer.
  */
 
+import type { CosmosPalette } from "./iso/cosmos.ts";
+
 export type PieceType = "p" | "n" | "b" | "r" | "q" | "k";
 /** Piece codes: colour (w/b) + piece letter. */
 export type PieceCode = `${"w" | "b"}${PieceType}`;
@@ -33,6 +35,8 @@ export interface BoardTheme {
   highlight: { lastMove: string; check: string };
   shadow: string;
   candles: { wax: string; waxShade: string; flame: string[]; glow: string } | null;
+  /** Planets, a black hole and a passing spaceship in the sky, or null for a plain starfield. */
+  cosmos: CosmosPalette | null;
   pieces: { w: PiecePalette; b: PiecePalette };
   /** 16-pixel-wide sprites, bottom row sits on the tile. */
   sprites: Record<PieceType, string[]>;
@@ -304,6 +308,7 @@ export const wizardTheme: BoardTheme = {
   highlight: { lastMove: "#ffd76a66", check: "#ff3b3b80" },
   shadow: "#0a061255",
   candles: { wax: "#efe6cf", waxShade: "#c4b48f", flame: ["#fff3b0", "#ffd76a", "#ff9b3d"], glow: "#ffd76a1c" },
+  cosmos: null,
   pieces: {
     w: { o: "#2a1a2e", b: "#e8dcc0", s: "#b8a47e", h: "#fffaf0", a: "#d9a441", d: "#5a4a6a", e: "#7fe0ff" },
     b: { o: "#07050c", b: "#3b3350", s: "#262036", h: "#6d6190", a: "#3fae6a", d: "#120e1c", e: "#9dff8a" },
@@ -317,6 +322,13 @@ export const spaceTheme: BoardTheme = {
   ...wizardTheme,
   name: "Deep Space",
   candles: null,
+  cosmos: {
+    mars: { ramp: ["#2a1016", "#5a2120", "#8f3a26", "#c05a34", "#e08050", "#f4ab78"], cap: "#f2eee8", marking: "#6a2a20" },
+    planet: { ramp: ["#141a3a", "#2a3a78", "#4a66b0", "#7fa2e0", "#c0d8ff"], ring: "#d8c8a0", ringShade: "#8a7a60" },
+    moon: { ramp: ["#1c1a26", "#4a4658", "#8a8698", "#c8c4d0"] },
+    blackHole: { hot: "#fff2c8", warm: "#ffae52", cool: "#b8408a", glow: "#ff8a3a14" },
+    ship: { hull: "#d6dcea", shade: "#7d869c", window: "#7fe0ff", flame: ["#fff3b0", "#ff9b3d"] },
+  },
   pieces: {
     w: { o: "#1a1d2e", b: "#e6e9f0", s: "#a9b0c2", h: "#ffffff", a: "#e8a33d", d: "#1c2440", e: "#7fe0ff" },
     b: { o: "#07050c", b: "#3a3552", s: "#24203a", h: "#6a6290", a: "#3fae6a", d: "#0f0c1a", e: "#9dff8a" },

@@ -2,6 +2,8 @@ import type { BoardTheme, PieceCode, PieceType, SpriteKey, TilePalette } from ".
 import { glyph } from "./font.ts";
 import type { PixelTarget } from "./pixels.ts";
 import { hiResSprite, scale2x } from "./upscale.ts";
+import { drawCosmos, drawFlyby } from "./cosmos.ts";
+import { fillCircle, hash, mix } from "./util.ts";
 
 /**
  * Pixels per original art pixel. The scene is drawn at twice the resolution the art was designed at:
@@ -77,17 +79,6 @@ function fillDiamond(t: PixelTarget, x: number, y: number, color: string | ((dx:
       t.fillRect(x + TILE_W / 2, y + dy, width / 2, 1, color(1));
     }
   }
-}
-
-/** Deterministic pseudo-random number in [0, 1) from integers. */
-function hash(...n: number[]): number {
-  let h = 2166136261;
-  for (const v of n) h = Math.imul(h ^ (v + 0x9e3779b9), 16777619);
-  // Final avalanche, so neighbouring inputs don't land on visible lines (e.g. rows of stars).
-  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-  h ^= h >>> 16;
-  return (h >>> 0) / 4294967296;
 }
 
 /** Stars drift slowly left; the nearer (bright) ones faster than the far ones. Pixels per second. */
@@ -204,13 +195,6 @@ function drawCandles(t: PixelTarget, theme: BoardTheme, time: number): void {
     t.fillRect(x + 1, y - 5, 4, 3, mid!);
     t.fillRect(x + 2, y - 4, 2, 3, core!);
   });
-}
-
-function fillCircle(t: PixelTarget, cx: number, cy: number, r: number, color: string): void {
-  for (let dy = -r; dy <= r; dy++) {
-    const half = Math.round(Math.sqrt(r * r - dy * dy));
-    t.fillRect(cx - half, cy + dy, half * 2, 1, color);
-  }
 }
 
 function drawSlab(t: PixelTarget, theme: BoardTheme): void {
@@ -337,17 +321,6 @@ function lightingRamps(palette: Record<SpriteKey, string>): { body: string[]; ac
   return ramps;
 }
 
-/** Blend two "#rrggbb" colours; amount 0 = a, 1 = b. */
-function mix(a: string, b: string, amount: number): string {
-  const channel = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
-  return (
-    "#" +
-    [0, 1, 2]
-      .map((i) => Math.round(channel(a, i) * (1 - amount) + channel(b, i) * amount).toString(16).padStart(2, "0"))
-      .join("")
-  );
-}
-
 /** A theme's sprite as drawn in the scene: doubled with Scale2x at RES 2. */
 export function pieceSprite(sprite: string[]): string[] {
   return RES === 2 ? hiResSprite(sprite) : sprite;
@@ -365,6 +338,10 @@ export function renderScene(target: PixelTarget, theme: BoardTheme, state: Scene
   const height = state.height ?? SCENE_H;
   drawSky(target, theme, time, width, height);
   const t = offsetTarget(target, state.boardX ?? Math.floor((width - SCENE_W) / 2), state.boardY ?? Math.floor((height - SCENE_H) / 2));
+  if (theme.cosmos) {
+    drawCosmos(t, theme.cosmos, RES, time);
+    drawFlyby(target, theme.cosmos, time, width, height);
+  }
   drawCandles(t, theme, time);
   drawSlab(t, theme);
   drawCoordinates(t, theme, state.orientation);

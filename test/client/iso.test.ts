@@ -167,6 +167,21 @@ describe("renderScene", () => {
   });
 });
 
+describe("space scenery", () => {
+  test("the space theme adds planets and a black hole to the sky without touching the board", () => {
+    const board = new Chess().board();
+    const plain = new PixelBuffer(SCENE_W, SCENE_H);
+    renderScene(plain, { ...spaceTheme, cosmos: null }, { board, orientation: "white" });
+    const space = new PixelBuffer(SCENE_W, SCENE_H);
+    renderScene(space, spaceTheme, { board, orientation: "white" });
+    // The black hole's centre (art pixel 40, 24) is pure black.
+    expect(space.get(40 * RES, 24 * RES)).toBe("#000000");
+    expect(plain.get(40 * RES, 24 * RES)).not.toBe("#000000");
+    const { x, y } = tileOrigin(3, 4);
+    expect(space.get(x + CX, y + CY)).toBe(plain.get(x + CX, y + CY));
+  });
+});
+
 describe("upscaling", () => {
   test("Scale2x doubles a sprite and rounds its diagonals", async () => {
     const { scale2x } = await import("../../src/client/iso/upscale.ts");

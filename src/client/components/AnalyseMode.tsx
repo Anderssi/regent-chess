@@ -59,8 +59,26 @@ export function AnalyseMode() {
   };
 
   return (
-    <section className="mode analyse">
+    <section className="mode with-side analyse">
       <aside className="box side-panel">
+        <div className="info">
+          {selected ? (
+            <>
+              <h2>{selected.title}</h2>
+              <p className="muted">
+                {selected.subtitle}
+                {selected.pgnUrl && (
+                  <>
+                    {" · "}
+                    <a href={selected.pgnUrl}>Download PGN</a>
+                  </>
+                )}
+              </p>
+            </>
+          ) : (
+            <p className="muted">Pick a previous game or paste one to analyse it.</p>
+          )}
+        </div>
         <h3>Paste a game</h3>
         <textarea
           value={pasted}
@@ -100,24 +118,6 @@ export function AnalyseMode() {
         </ul>
       </aside>
       <div className="analyse-main">
-        <div className="box info">
-          {selected ? (
-            <>
-              <h2>{selected.title}</h2>
-              <p className="muted">
-                {selected.subtitle}
-                {selected.pgnUrl && (
-                  <>
-                    {" · "}
-                    <a href={selected.pgnUrl}>Download PGN</a>
-                  </>
-                )}
-              </p>
-            </>
-          ) : (
-            <p className="muted">Pick a previous game or paste one to analyse it.</p>
-          )}
-        </div>
         <GameViewer
           key={selected ? selected.title + selected.sanMoves.length : "empty"}
           sanMoves={selected?.sanMoves ?? []}
