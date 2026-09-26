@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { GameAnalysis, GameRecord } from "../../shared/types.ts";
 import { api } from "../api.ts";
-import { aiScore, describeOutcome } from "../format.ts";
+import { AI_NAME } from "../../shared/rules.ts";
+import { aiScore, describeOutcome, playerName } from "../format.ts";
 import { GameViewer } from "./GameViewer.tsx";
 
 interface Selected {
@@ -29,7 +30,7 @@ export function AnalyseMode() {
 
   const openGame = (g: GameRecord) =>
     setSelected({
-      title: `#${g.id} ${g.white} vs ${g.black}`,
+      title: `#${g.id} ${playerName(g.white)} vs ${playerName(g.black)}`,
       subtitle: describeOutcome(g),
       sanMoves: g.sanMoves,
       analysis: g.analysis,
@@ -90,7 +91,7 @@ export function AnalyseMode() {
           {games.map((g) => (
             <li key={g.id}>
               <button onClick={() => openGame(g)}>
-                <span>#{g.id} Lc0 as {g.aiColor}</span>
+                <span>#{g.id} {AI_NAME} as {g.aiColor}</span>
                 <span className={`badge ${aiScore(g) ?? g.status}`}>{g.result ?? g.status.replace("_", " ")}</span>
                 <span className="muted">Elo {g.aiEloEstimate ?? "—"}</span>
               </button>

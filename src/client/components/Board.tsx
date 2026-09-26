@@ -107,8 +107,8 @@ function useSceneSize(boxRef: React.RefObject<HTMLDivElement | null>, minScale: 
     if (!fullscreen || !stage || typeof ResizeObserver === "undefined") return;
     const update = () => {
       const r = stage.getBoundingClientRect();
-      // Never below 1× (tiny stages on phones); fractional scales keep the board filling the stage.
-      const scale = Math.max(1, Math.min(r.width / SCENE_W, r.height / SCENE_H));
+      // Fractional scales keep the board filling the stage; below 0.5× (tiny phone stages) it would blur.
+      const scale = Math.max(0.5, Math.min(r.width / SCENE_W, r.height / SCENE_H));
       const width = Math.ceil(window.innerWidth / scale);
       const height = Math.ceil(window.innerHeight / scale);
       const boardX = Math.round((r.left + r.width / 2) / scale - SCENE_W / 2);

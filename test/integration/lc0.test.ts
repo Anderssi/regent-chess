@@ -61,7 +61,7 @@ describe.skipIf(!lc0Available)("real Lc0", () => {
       await service.waitForActiveGame();
       const game = service.getGame(started.id)!;
       expect(game.status).toBe("finished");
-      expect(game[expectedColor]).toBe("Lc0");
+      expect(game[expectedColor]).toBe("Pluto");
       expect(parsePastedGame(game.pgn).sanMoves).toEqual(game.sanMoves);
       expect(game.ratingAfter).not.toBeNull();
       expect(game.aiEloEstimate).toBe(game.analysis![expectedColor].estimatedElo);

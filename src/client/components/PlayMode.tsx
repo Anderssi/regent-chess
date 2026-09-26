@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GameRecord } from "../../shared/types.ts";
-import { MOVE_TIME_LIMIT_MS, STOCKFISH_ELO } from "../../shared/rules.ts";
+import { AI_NAME, MOVE_TIME_LIMIT_MS, STOCKFISH_ELO } from "../../shared/rules.ts";
 import { api, type Status } from "../api.ts";
 import { GameViewer } from "./GameViewer.tsx";
-import { describeOutcome } from "../format.ts";
+import { describeOutcome, playerName } from "../format.ts";
 
 export function PlayMode() {
   const [status, setStatus] = useState<Status | null>(null);
@@ -53,7 +53,7 @@ export function PlayMode() {
           </button>
           {status && (
             <span className="muted">
-              Lc0's rating: <strong>{status.rating}</strong> · next game Lc0 plays {game?.status === "in_progress" ? game.aiColor : status.nextAiColor} · Stockfish {STOCKFISH_ELO} · {MOVE_TIME_LIMIT_MS / 1000}s per move
+              {AI_NAME}'s rating: <strong>{status.rating}</strong> · next game {AI_NAME} plays {game?.status === "in_progress" ? game.aiColor : status.nextAiColor} · Stockfish {STOCKFISH_ELO} · {MOVE_TIME_LIMIT_MS / 1000}s per move
             </span>
           )}
         </div>
@@ -61,14 +61,14 @@ export function PlayMode() {
         {game ? (
           <>
             <h2>
-              {game.white} vs {game.black}
+              {playerName(game.white)} vs {playerName(game.black)}
             </h2>
             <p className="muted">{describeOutcome(game)}</p>
           </>
         ) : (
           <>
             <h2>The board awaits</h2>
-            <p className="muted">Start a game to watch Lc0 face Stockfish.</p>
+            <p className="muted">Start a game to watch {AI_NAME} face Stockfish.</p>
           </>
         )}
       </div>

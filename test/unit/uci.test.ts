@@ -97,7 +97,7 @@ describe("Lc0Player", () => {
     const { engine, sent } = fakeEngine();
     await engine.init();
     const player = await Lc0Player.create(engine, 4000);
-    expect(player.name).toBe("Lc0");
+    expect(player.name).toBe("Pluto");
     expect(sent).toContain("go nodes 1"); // warm-up search
     expect(sent.some((l) => l.includes("UCI_LimitStrength") || l.includes("UCI_Elo"))).toBe(false);
     sent.length = 0;

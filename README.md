@@ -1,6 +1,6 @@
 # Regent Chess App
 
-Our AI, [Leela Chess Zero](https://lczero.org/) (Lc0), plays chess against Stockfish (limited to 1600 Elo) and builds up a rating. Games are stored in algebraic notation and can be replayed and analysed with Stockfish, as can any game you paste in.
+Our AI, **Pluto**, plays chess against Stockfish (limited to 1600 Elo) and builds up a rating. Under the hood Pluto is [Leela Chess Zero](https://lczero.org/) (Lc0); the rest of this README calls it Lc0 when talking about the engine. Games are stored in algebraic notation and can be replayed and analysed with Stockfish, as can any game you paste in.
 
 ## Running
 
@@ -30,7 +30,7 @@ On startup the server checks both engines and prints `Lc0 is ready` and `Stockfi
 
 ## Modes
 
-- **Play:** starts a game of Lc0 vs Stockfish and shows it live. Lc0 alternates between White and Black from game to game, starting with White.
+- **Play:** starts a game of Pluto (Lc0) vs Stockfish and shows it live. Lc0 alternates between White and Black from game to game, starting with White.
 - **Analyse:** pick a previous game (sortable by date or estimated Elo) or paste a game (PGN or plain moves like `1. e4 e5 2. Nf3`). Stockfish analyses every move and reports eval, centipawn loss, accuracy and the best move. Each stored game has a PGN download.
 
 ## Rules
@@ -51,9 +51,9 @@ Stockfish doesn't output Elo ratings, so the app keeps two numbers:
 
 ## Board design
 
-The board is isometric pixel art with a wizard's-tower theme. The whole scene is drawn at native resolution (264 × 158 px) and scaled up with nearest-neighbour sampling so the pixels stay sharp. In the app the scene is a full-window backdrop: the sky covers the whole screen, the page's controls float over it in translucent panels, and the board is scaled to fit and centred in the open space between them.
+The board is isometric pixel art: a starlit board with a space crew for pieces (astronaut pawns, rocket knights, alien bishops, station-tower rooks, ringed-planet queens and a star-crowned commander king). The whole scene is drawn at native resolution (528 × 316 px, twice the resolution the art is designed at) and scaled with nearest-neighbour sampling so the pixels stay sharp. The 16 px sprites and the 3×5 coordinate font are doubled with Scale2x, which rounds off diagonals, and the doubled outlines are thinned back to one pixel (`src/client/iso/upscale.ts`); tiles, stars and candles are drawn at the full resolution. In the app the scene is a full-window backdrop: the sky covers the whole screen, the page's controls float over it in translucent panels, and the board is scaled to fit and centred in the open space between them.
 
-- `src/client/theme.ts` holds everything visual: tile, slab, sky, candle and highlight colors, the piece palettes for each side, and the piece sprites. Sprites are 16 px wide text grids using the palette keys (`o` outline, `b` base, `s` shade, `h` highlight, `a` accent, `d` shadow, `e` glow). To redesign, edit or copy `wizardTheme`.
+- `src/client/theme.ts` holds everything visual: tile, slab, sky, candle and highlight colors, the piece palettes for each side, and the piece sprites. Sprites are 16 px wide text grids using the palette keys (`o` outline, `b` base, `s` shade, `h` highlight, `a` accent, `d` shadow, `e` glow). The app uses `spaceTheme`; `wizardTheme` has the original wizard pieces. To redesign, edit or copy one and point `defaultTheme` at it.
 - `src/client/iso/render.ts` is the renderer: isometric geometry, drawing back to front, piece lighting (pieces are shaded as rounded solids lit from the upper left), coordinates engraved on the slab, and the sky animation: floating candles, twinkling and drifting stars, drifting mist, and the odd shooting star (turned off when the OS asks for reduced motion). It draws onto any `PixelTarget`, which is the canvas in the app and a pixel buffer in tests.
 - Preview a design without starting the app: `bun scripts/render-board.ts "<fen>" board.png white 3` writes a PNG.
 - The canvas is hidden from screen readers. A visually hidden grid lists every square and its piece instead.

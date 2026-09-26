@@ -22,7 +22,7 @@ export interface TilePalette {
 
 export interface BoardTheme {
   name: string;
-  /** Integer upscale of the native pixel art. */
+  /** Upscale of the native scene when shown inline (the scene is already drawn at 2× art resolution). */
   scale: number;
   sky: string[];
   stars: { bright: string; dim: string };
@@ -165,9 +165,134 @@ const SPRITES: Record<PieceType, string[]> = {
   ],
 };
 
+const SPACE_SPRITES: Record<PieceType, string[]> = {
+  // Astronaut with a glowing visor
+  p: [
+    "......oooo......",
+    "....oobbbboo....",
+    "...obbbbbbbbo...",
+    "...obddddddbo...",
+    "...obdeedddbo...",
+    "...obddddddbo...",
+    "....obbbbbbo....",
+    "...oabbbbbbao...",
+    "..obbbbaabbbbo..",
+    "..obbbbbbbbbbo..",
+    "...obbbbbbbbo...",
+    "..oaaaaaaaaaao..",
+    "..oooooooooooo..",
+  ],
+  // Rocket with a porthole, fins and exhaust
+  n: [
+    ".......oo.......",
+    "......obbo......",
+    ".....obbbbo.....",
+    ".....oaaaao.....",
+    ".....obbbbo.....",
+    "....obboobbo....",
+    "....oboeeobo....",
+    "....obboobbo....",
+    "....obbbbbbo....",
+    "...oobbaabboo...",
+    "..oaobbaabboao..",
+    ".oaaobbbbbboaao.",
+    ".oaaobbbbbboaao.",
+    ".ooooaaaaaaoooo.",
+    "......oeeo......",
+    ".......ee.......",
+  ],
+  // Alien with antennae
+  b: [
+    "...e........e...",
+    "...o........o...",
+    "....o......o....",
+    ".....oooooo.....",
+    "....obbbbbbo....",
+    "...obbbbbbbbo...",
+    "...obddbbddbo...",
+    "...obdebbdebo...",
+    "...obddbbddbo...",
+    "....obbbbbbo....",
+    ".....obaabo.....",
+    "......obbo......",
+    ".....oaaaao.....",
+    "....obbbbbbo....",
+    "...obbbabbbbo...",
+    "...obbbbabbbo...",
+    "..obbbbbbabbbo..",
+    "..obbbbbbbbbbo..",
+    "..oaaaaaaaaaao..",
+    "..oooooooooooo..",
+  ],
+  // Space-station tower with antennae and lit windows
+  r: [
+    "..oo........oo..",
+    "..oao..oo..oao..",
+    "..oaooobboooao..",
+    "..oaaaaaaaaaao..",
+    "...obbbbbbbbo...",
+    "...obebbbbebo...",
+    "...obebbbbebo...",
+    "...obbbbbbbbo...",
+    "...oaaaaaaaao...",
+    "...obbbeebbbo...",
+    "...obbbeebbbo...",
+    "..oaaaaaaaaaao..",
+    "..obbbbbbbbbbo..",
+    ".oooooooooooooo.",
+  ],
+  // Ringed planet on a pedestal
+  q: [
+    "......oooo......",
+    "....oobbbboo....",
+    "...obbbbbbbbo...",
+    "..obbbbbbbbbbo..",
+    "oaaaaaaaaaaaaaao",
+    ".oobbbbbbbbbboo.",
+    "..obbbbbbbbbbo..",
+    "...obbbbbbbbo...",
+    "....oobbbboo....",
+    "......obbo......",
+    ".....oaaaao.....",
+    "......obbo......",
+    ".....obbbbo.....",
+    "....obbbbbbo....",
+    "....obbeebbo....",
+    "...obbbbbbbbo...",
+    "..obbbbbbbbbbo..",
+    ".oaaaaaaaaaaaao.",
+    ".oooooooooooooo.",
+  ],
+  // Commander with a star above the helmet
+  k: [
+    ".......oo.......",
+    "......oaao......",
+    "..ooooaaaaoooo..",
+    "...oaaaaaaaao...",
+    "....oaaeeaao....",
+    "...oaaaooaaao...",
+    "...oaoo..ooao...",
+    "...oo......oo...",
+    ".....oooooo.....",
+    "....obbbbbbo....",
+    "...obddddddbo...",
+    "...obdeedddbo...",
+    "...obddddddbo...",
+    "....obbbbbbo....",
+    "..oooabbbbaooo..",
+    ".obbbbbaabbbbbo.",
+    ".obbbbaaaabbbbo.",
+    ".obbbbbaabbbbbo.",
+    "..obbbbbbbbbbo..",
+    ".obbbbbbbbbbbbo.",
+    ".oaaaaaaaaaaaao.",
+    ".oooooooooooooo.",
+  ],
+};
+
 export const wizardTheme: BoardTheme = {
   name: "Wizard's Tower",
-  scale: 2,
+  scale: 1,
   sky: ["#0b0815", "#0d0a19", "#100c1e", "#130e23", "#161028", "#19122d", "#1c1432", "#1f1637"],
   stars: { bright: "#fff6e0", dim: "#7d72a8" },
   mist: "#8a7ab812",
@@ -187,4 +312,15 @@ export const wizardTheme: BoardTheme = {
   mirrorBlack: true,
 };
 
-export const defaultTheme = wizardTheme;
+/** The wizard's tower board and sky, with a space crew for pieces. */
+export const spaceTheme: BoardTheme = {
+  ...wizardTheme,
+  name: "Deep Space",
+  pieces: {
+    w: { o: "#1a1d2e", b: "#e6e9f0", s: "#a9b0c2", h: "#ffffff", a: "#e8a33d", d: "#1c2440", e: "#7fe0ff" },
+    b: { o: "#07050c", b: "#3a3552", s: "#24203a", h: "#6a6290", a: "#3fae6a", d: "#0f0c1a", e: "#9dff8a" },
+  },
+  sprites: SPACE_SPRITES,
+};
+
+export const defaultTheme = spaceTheme;

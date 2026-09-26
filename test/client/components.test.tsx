@@ -38,7 +38,7 @@ describe("client", () => {
     const canvas = container.querySelector("canvas")!;
     expect(canvas.getAttribute("width")).toBe(String(SCENE_W));
     expect(canvas.getAttribute("height")).toBe(String(SCENE_H));
-    expect((container.querySelector(".board") as HTMLElement).style.width).toBe(`${SCENE_W * 2}px`);
+    expect((container.querySelector(".board") as HTMLElement).style.width).toBe(`${SCENE_W}px`);
     expect(container.querySelector('[data-square="h1"]')!.getAttribute("aria-label")).toBe("h1, white rook");
     expect(container.querySelector('[data-square="d4"]')!.getAttribute("aria-label")).toBe("d4, empty");
   });
@@ -81,12 +81,18 @@ test("replayPositions returns one position per ply plus the start", async () => 
   expect(positions[2]!.lastMove).toEqual({ from: "e7", to: "e5" });
 });
 
-test("describeOutcome summarises finished games from Lc0's point of view", async () => {
+test("describeOutcome summarises finished games from Pluto's point of view", async () => {
   const { describeOutcome } = await import("../../src/client/format.ts");
   const text = describeOutcome({
     id: 1, createdAt: "", finishedAt: "", status: "finished", aiColor: "black", white: "S", black: "C",
     result: "0-1", termination: "timeout", sanMoves: [], pgn: "", aiEloEstimate: 1700,
     ratingBefore: 1500, ratingAfter: 1521, error: null, analysis: null,
   });
-  expect(text).toBe("0-1 by time forfeit · Lc0 won · rating 1500 → 1521 (+21) · est. Elo this game: 1700");
+  expect(text).toBe("0-1 by time forfeit · Pluto won · rating 1500 → 1521 (+21) · est. Elo this game: 1700");
+});
+
+test("games stored under the old name show as Pluto", async () => {
+  const { playerName } = await import("../../src/client/format.ts");
+  expect(playerName("Lc0")).toBe("Pluto");
+  expect(playerName("Stockfish (1600)")).toBe("Stockfish (1600)");
 });

@@ -1,5 +1,5 @@
 import type { Color } from "../shared/types.ts";
-import { STOCKFISH_ELO } from "../shared/rules.ts";
+import { AI_NAME, STOCKFISH_ELO } from "../shared/rules.ts";
 import { Chess } from "chess.js";
 import type { UciEngine } from "./engine/uci.ts";
 
@@ -63,6 +63,6 @@ export class Lc0Player extends EnginePlayer {
     await engine.newGame();
     // Lc0 loads its network on the first search (1-2 s). Do that now, so it isn't charged to the first move's clock.
     await engine.search(new Chess().fen(), { nodes: 1 });
-    return new Lc0Player("Lc0", engine, movetimeMs);
+    return new Lc0Player(AI_NAME, engine, movetimeMs);
   }
 }

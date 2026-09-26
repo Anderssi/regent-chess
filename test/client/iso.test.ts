@@ -2,8 +2,24 @@ import { describe, expect, test } from "bun:test";
 import { Chess } from "chess.js";
 import { PixelBuffer } from "../../src/client/iso/pixels.ts";
 import { glyph } from "../../src/client/iso/font.ts";
-import { gridToSquare, renderScene, SCENE_H, SCENE_W, spriteOrigin, squareToGrid, tileOrigin, TILE_W } from "../../src/client/iso/render.ts";
-import { wizardTheme, type SpriteKey } from "../../src/client/theme.ts";
+import {
+  gridToSquare,
+  pieceSprite,
+  renderScene,
+  RES,
+  SCENE_H,
+  SCENE_W,
+  spriteOrigin,
+  squareToGrid,
+  tileOrigin,
+  TILE_H,
+  TILE_W,
+} from "../../src/client/iso/render.ts";
+import { spaceTheme, wizardTheme, type SpriteKey } from "../../src/client/theme.ts";
+
+/** A tile's centre, relative to its origin. */
+const CX = TILE_W / 2;
+const CY = TILE_H / 2;
 
 const render = (fen: string, orientation: "white" | "black" = "white", extra = {}) => {
   const buf = new PixelBuffer(SCENE_W, SCENE_H);
@@ -13,7 +29,7 @@ const render = (fen: string, orientation: "white" | "black" = "white", extra = {
 
 /** Pixels of the sprite for the piece on `square` that are drawn with the palette's outline colour. */
 function spriteOutlineMatches(buf: PixelBuffer, square: string, type: keyof typeof wizardTheme.sprites, color: "w" | "b", orientation: "white" | "black" = "white") {
-  const sprite = wizardTheme.sprites[type];
+  const sprite = pieceSprite(wizardTheme.sprites[type]);
   const { col, row } = squareToGrid(square, orientation);
   const origin = spriteOrigin(col, row, sprite.length);
   const palette = wizardTheme.pieces[color];
@@ -32,12 +48,14 @@ function spriteOutlineMatches(buf: PixelBuffer, square: string, type: keyof type
 }
 
 describe("piece sprites", () => {
-  test("every sprite is 16 pixels wide and uses only palette keys", () => {
-    const keys = new Set<string>([".", ...(Object.keys(wizardTheme.pieces.w) as SpriteKey[])]);
-    for (const [type, sprite] of Object.entries(wizardTheme.sprites)) {
-      for (const line of sprite) {
-        expect({ type, width: line.length }).toEqual({ type, width: 16 });
-        for (const ch of line) expect(keys.has(ch)).toBe(true);
+  test("every sprite in every theme is 16 pixels wide and uses only palette keys", () => {
+    for (const theme of [wizardTheme, spaceTheme]) {
+      const keys = new Set<string>([".", ...(Object.keys(theme.pieces.w) as SpriteKey[])]);
+      for (const [type, sprite] of Object.entries(theme.sprites)) {
+        for (const line of sprite) {
+          expect({ theme: theme.name, type, width: line.length }).toEqual({ theme: theme.name, type, width: 16 });
+          for (const ch of line) expect(keys.has(ch)).toBe(true);
+        }
       }
     }
   });
@@ -71,7 +89,7 @@ describe("isometric geometry", () => {
   test("the whole board fits inside the scene", () => {
     expect(tileOrigin(0, 7).x).toBeGreaterThanOrEqual(0);
     expect(tileOrigin(7, 0).x + TILE_W).toBeLessThanOrEqual(SCENE_W);
-    expect(spriteOrigin(0, 0, wizardTheme.sprites.k.length).y).toBeGreaterThanOrEqual(0);
+    expect(spriteOrigin(0, 0, pieceSprite(wizardTheme.sprites.k).length).y).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -97,11 +115,15 @@ describe("renderScene", () => {
       const buf = render(fen);
       const square = color === "w" ? "a1" : "a8";
       const { col, row } = squareToGrid(square, "white");
-      const origin = spriteOrigin(col, row, wizardTheme.sprites.r.length);
-      // Rook row 9 ("...ohbbbbbbso..."): body pixels run x = 4..11.
-      const y = origin.y + 9;
-      expect(lum(buf.get(origin.x + 4, y))).toBeGreaterThan(lum(buf.get(origin.x + 8, y)));
-      expect(lum(buf.get(origin.x + 8, y))).toBeGreaterThan(lum(buf.get(origin.x + 11, y)));
+      const sprite = pieceSprite(wizardTheme.sprites.r);
+      const origin = spriteOrigin(col, row, sprite.length);
+      // A plain body row of the tower (art row 9, "...ohbbbbbbso..."): compare its left, middle and right.
+      const dy = 9 * RES;
+      const body = [...sprite[dy]!].flatMap((ch, dx) => (ch === "o" || ch === "." ? [] : [dx]));
+      const [left, mid, right] = [body[0]!, body[body.length >> 1]!, body[body.length - 1]!];
+      const y = origin.y + dy;
+      expect(lum(buf.get(origin.x + left, y))).toBeGreaterThan(lum(buf.get(origin.x + mid, y)));
+      expect(lum(buf.get(origin.x + mid, y))).toBeGreaterThan(lum(buf.get(origin.x + right, y)));
     }
   });
 
@@ -111,9 +133,9 @@ describe("renderScene", () => {
     const lit = render(fen, "white", { lastMove: { from: "b3", to: "c5" } });
     const { col, row } = squareToGrid("b3", "white");
     const { x, y } = tileOrigin(col, row);
-    expect(lit.get(x + 16, y + 8)).not.toBe(plain.get(x + 16, y + 8));
+    expect(lit.get(x + CX, y + CY)).not.toBe(plain.get(x + CX, y + CY));
     const other = tileOrigin(...(Object.values(squareToGrid("g6", "white")) as [number, number]));
-    expect(lit.get(other.x + 16, other.y + 8)).toBe(plain.get(other.x + 16, other.y + 8));
+    expect(lit.get(other.x + CX, other.y + CY)).toBe(plain.get(other.x + CX, other.y + CY));
   });
 
   test("a still frame is deterministic", () => {
@@ -128,7 +150,7 @@ describe("renderScene", () => {
     const late = render(fen, "white", { time: 20000 });
     expect(Buffer.from(early.data).equals(Buffer.from(late.data))).toBe(false);
     const { x, y } = tileOrigin(4, 4);
-    expect(late.get(x + 16, y + 8)).toBe(early.get(x + 16, y + 8));
+    expect(late.get(x + CX, y + CY)).toBe(early.get(x + CX, y + CY));
   });
 
   test("a larger canvas fills with sky and centres the board", () => {
@@ -139,8 +161,26 @@ describe("renderScene", () => {
     const big = new PixelBuffer(width, height);
     renderScene(big, wizardTheme, { board: new Chess(fen).board(), orientation: "white", width, height });
     const { x, y } = tileOrigin(3, 4);
-    expect(big.get(x + 16 + 50, y + 8 + 30)).toBe(small.get(x + 16, y + 8));
+    expect(big.get(x + CX + 50, y + CY + 30)).toBe(small.get(x + CX, y + CY));
     // Every pixel is painted, including the corners beyond the original scene.
     expect(big.data[(height * width - 1) * 4 + 3]).toBe(255);
+  });
+});
+
+describe("upscaling", () => {
+  test("Scale2x doubles a sprite and rounds its diagonals", async () => {
+    const { scale2x } = await import("../../src/client/iso/upscale.ts");
+    const up = scale2x([".o.", "ooo", ".o."]);
+    expect(up).toHaveLength(6);
+    expect(up.every((line) => line.length === 6)).toBe(true);
+    // A plus sign's inner corners fill in, so it reads as a rounded blob, not a blocky cross.
+    expect(up[1]).toBe(".oooo.");
+  });
+
+  test("silhouette outlines are thinned back to one pixel, inner details are kept", async () => {
+    const { hiResSprite } = await import("../../src/client/iso/upscale.ts");
+    const hi = hiResSprite(["oooo", "obbo", "oeeo", "oooo"]);
+    expect(hi[3]).toBe("obbbbbbo"); // left/right edges one pixel thick
+    expect(hi[4]!.includes("e")).toBe(true);
   });
 });

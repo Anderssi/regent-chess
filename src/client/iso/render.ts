@@ -1,15 +1,23 @@
 import type { BoardTheme, PieceCode, PieceType, SpriteKey, TilePalette } from "../theme.ts";
 import { glyph } from "./font.ts";
 import type { PixelTarget } from "./pixels.ts";
+import { hiResSprite, scale2x } from "./upscale.ts";
+
+/**
+ * Pixels per original art pixel. The scene is drawn at twice the resolution the art was designed at:
+ * sprites and glyphs are upscaled (Scale2x), and tiles, stars and candles are drawn at full detail.
+ */
+export const RES = 2;
 
 /** Native (unscaled) geometry of the isometric scene. */
-export const TILE_W = 32;
-export const TILE_H = 16;
-export const SLAB_DEPTH = 12;
-const MARGIN_X = 4;
+export const TILE_W = 32 * RES;
+export const TILE_H = 16 * RES;
+export const SLAB_DEPTH = 12 * RES;
+export const SPRITE_W = 16 * RES;
+const MARGIN_X = 4 * RES;
 /** Headroom above the back tile for the tallest sprite (the king). */
-const MARGIN_TOP = 14;
-const MARGIN_BOTTOM = 4;
+const MARGIN_TOP = 14 * RES;
+const MARGIN_BOTTOM = 4 * RES;
 
 export const SCENE_W = TILE_W * 8 + MARGIN_X * 2;
 export const SCENE_H = MARGIN_TOP + TILE_H * 8 + SLAB_DEPTH + MARGIN_BOTTOM;
@@ -83,7 +91,7 @@ function hash(...n: number[]): number {
 }
 
 /** Stars drift slowly left; the nearer (bright) ones faster than the far ones. Pixels per second. */
-const STAR_DRIFT = { near: 2, far: 0.8 };
+const STAR_DRIFT = { near: 2 * RES, far: 0.8 * RES };
 /** A shooting star crosses the sky once per period, taking SHOOTING_MS. */
 const SHOOTING_PERIOD_MS = 9000;
 const SHOOTING_MS = 700;
@@ -92,8 +100,8 @@ function drawSky(t: PixelTarget, theme: BoardTheme, time: number, width: number,
   const bands = theme.sky;
   const bandH = Math.ceil(height / bands.length);
   bands.forEach((color, i) => t.fillRect(0, i * bandH, width, bandH, color));
-  // Keep the star density of the original scene when the sky is larger.
-  const stars = Math.round((70 * width * height) / (SCENE_W * SCENE_H));
+  // Stars per scene-sized patch of sky, whatever the canvas size.
+  const stars = Math.round((110 * width * height) / (SCENE_W * SCENE_H));
   for (let i = 0; i < stars; i++) {
     const bright = hash(i, 3) > 0.8;
     const drift = Math.floor((time / 1000) * (bright ? STAR_DRIFT.near : STAR_DRIFT.far));
@@ -114,10 +122,10 @@ function drawSky(t: PixelTarget, theme: BoardTheme, time: number, width: number,
 
 /** Faint clouds drifting right across the sky, each at its own height and speed (pixels per second). */
 const MIST = [
-  { y: 0.12, w: 90, h: 10, speed: 1.4, phase: 0.1 },
-  { y: 0.3, w: 130, h: 14, speed: 0.9, phase: 0.55 },
-  { y: 0.55, w: 70, h: 8, speed: 1.8, phase: 0.8 },
-  { y: 0.78, w: 110, h: 12, speed: 1.1, phase: 0.35 },
+  { y: 0.12, w: 90 * RES, h: 10 * RES, speed: 1.4 * RES, phase: 0.1 },
+  { y: 0.3, w: 130 * RES, h: 14 * RES, speed: 0.9 * RES, phase: 0.55 },
+  { y: 0.55, w: 70 * RES, h: 8 * RES, speed: 1.8 * RES, phase: 0.8 },
+  { y: 0.78, w: 110 * RES, h: 12 * RES, speed: 1.1 * RES, phase: 0.35 },
 ];
 
 function drawMist(t: PixelTarget, theme: BoardTheme, time: number, width: number, height: number): void {
@@ -145,53 +153,64 @@ function drawShootingStar(t: PixelTarget, theme: BoardTheme, time: number, width
   // Falls down-left at the isometric 2:1 slope, starting somewhere in the upper sky.
   const startX = Math.floor(width * (0.3 + 0.6 * hash(n, 7)));
   const startY = Math.floor(height * 0.35 * hash(n, 8));
-  const travel = Math.floor((elapsed / SHOOTING_MS) * 90);
+  const travel = Math.floor((elapsed / SHOOTING_MS) * 90 * RES);
   const headX = startX - travel;
   const headY = startY + Math.floor(travel / 2);
-  for (let k = 0; k < 10; k++) {
-    t.fillRect(headX + k * 2, headY - k, 2, 1, k < 3 ? theme.stars.bright : theme.stars.dim);
+  for (let k = 0; k < 10 * RES; k++) {
+    t.fillRect(headX + k * 2, headY - k, 2, 1, k < 3 * RES ? theme.stars.bright : theme.stars.dim);
   }
 }
 
+/** Candle positions in the original art's pixels (scaled by RES when drawn). */
 const CANDLES = [
   { x: 30, y: 20, h: 9 },
   { x: 58, y: 34, h: 6 },
   { x: 86, y: 14, h: 7 },
-  { x: SCENE_W - 90, y: 18, h: 8 },
-  { x: SCENE_W - 60, y: 32, h: 6 },
-  { x: SCENE_W - 32, y: 12, h: 9 },
+  { x: 264 - 90, y: 18, h: 8 },
+  { x: 264 - 60, y: 32, h: 6 },
+  { x: 264 - 32, y: 12, h: 9 },
 ];
 
 /** Candles float on slow sine waves: up to FLOAT_PX up and down, with a smaller sideways sway. */
-const FLOAT_PX = 3;
+const FLOAT_PX = 3 * RES;
 
 function drawCandles(t: PixelTarget, theme: BoardTheme, time: number): void {
   const c = theme.candles;
   if (!c) return;
+  const [core, mid, outer] = c.flame;
   CANDLES.forEach((candle, i) => {
     // Each candle has its own period (4.5-6.5 s) and phase, so they drift independently.
     const period = 4500 + (i % 3) * 1000;
     const bob = time > 0 ? Math.round(FLOAT_PX * Math.sin((time / period) * 2 * Math.PI + i * 1.7)) : 0;
-    const sway = time > 0 ? Math.round(Math.sin((time / (period * 1.7)) * 2 * Math.PI + i)) : 0;
-    const x = candle.x + sway;
-    const y = candle.y + bob;
-    // Glow: breathes a pixel wider on alternate flame frames
+    const sway = time > 0 ? Math.round(RES * Math.sin((time / (period * 1.7)) * 2 * Math.PI + i)) : 0;
+    const x = candle.x * RES + sway;
+    const y = candle.y * RES + bob;
+    const h = candle.h * RES;
+    // Glow: round halos around the flame, stacked so they brighten towards it; breathes with the flicker
     const frame = time > 0 ? Math.floor(time / 180 + i) % 3 : 0;
     const pulse = frame === 0 ? 1 : 0;
-    t.fillRect(x - 4 - pulse, y - 7 - pulse, 11 + pulse * 2, 9 + pulse * 2, c.glow);
-    t.fillRect(x - 2, y - 9, 7, 13, c.glow);
-    // Wax with a shaded right edge and a drip
-    t.fillRect(x, y, 3, candle.h, c.wax);
-    t.fillRect(x + 2, y, 1, candle.h, c.waxShade);
-    t.fillRect(x, y, 1, 3 + (i % 2), c.wax);
-    t.fillRect(x - 1, y + 1, 1, 2, c.wax);
-    // Flame: flickers between frames
-    const [core, mid, outer] = c.flame;
-    t.fillRect(x + 1, y - 4 + (frame === 2 ? 1 : 0), 1, 1, outer!);
-    t.fillRect(x, y - 3, 3, 2, mid!);
-    t.fillRect(x + (frame === 1 ? 0 : 1), y - 3, 1, 1, outer!);
-    t.fillRect(x + 1, y - 2, 1, 2, core!);
+    for (const r of [12 + pulse, 8 + pulse, 5]) fillCircle(t, x + 3, y - 4, r, c.glow);
+    // Wax: lit left edge, shaded right edge, a drip down the front and one over the rim
+    t.fillRect(x, y, 6, h, c.wax);
+    t.fillRect(x + 4, y, 2, h, c.waxShade);
+    t.fillRect(x + 1, y + 1, 1, h - 2, mix(c.wax, "#ffffff", 0.5));
+    t.fillRect(x + 1, y, 2, 6 + (i % 2) * 2, c.wax);
+    t.fillRect(x - 1, y + 1, 1, 4, c.wax);
+    t.fillRect(x + 2, y - 1, 1, 1, "#3a2a1a"); // wick
+    // Flame: a teardrop that leans with the flicker
+    const lean = frame === 1 ? -1 : frame === 2 ? 1 : 0;
+    t.fillRect(x + 2 + lean, y - 8, 2, 1, outer!);
+    t.fillRect(x + 1 + lean, y - 7, 4, 2, outer!);
+    t.fillRect(x + 1, y - 5, 4, 3, mid!);
+    t.fillRect(x + 2, y - 4, 2, 3, core!);
   });
+}
+
+function fillCircle(t: PixelTarget, cx: number, cy: number, r: number, color: string): void {
+  for (let dy = -r; dy <= r; dy++) {
+    const half = Math.round(Math.sqrt(r * r - dy * dy));
+    t.fillRect(cx - half, cy + dy, half * 2, 1, color);
+  }
 }
 
 function drawSlab(t: PixelTarget, theme: BoardTheme): void {
@@ -218,15 +237,26 @@ function drawCoordinates(t: PixelTarget, theme: BoardTheme, orientation: "white"
     const rankSquare = gridToSquare(7, i, orientation);
     const left = tileOrigin(i, 7);
     const right = tileOrigin(7, i);
-    // The slab face starts ~13px below the tile's top; centre the 5px glyph in what's left of it.
-    const dy = 13 + Math.floor((SLAB_DEPTH - 7) / 2);
-    drawGlyph(t, fileSquare[0]!, left.x + 7, left.y + dy, theme.slab.engraving);
-    drawGlyph(t, rankSquare[1]!, right.x + 23, right.y + dy, theme.slab.engraving);
+    // The slab face starts ~13 art pixels below the tile's top; centre the glyph in what's left of it.
+    const dy = 13 * RES + Math.floor((SLAB_DEPTH - 7 * RES) / 2);
+    drawGlyph(t, fileSquare[0]!, left.x + 7 * RES, left.y + dy, theme.slab.engraving);
+    drawGlyph(t, rankSquare[1]!, right.x + 23 * RES, right.y + dy, theme.slab.engraving);
   }
 }
 
+const glyphCache = new Map<string, string[] | undefined>();
+
+/** The coordinate font at scene resolution (Scale2x of the 3×5 original). */
+function hiResGlyph(char: string): string[] | undefined {
+  if (!glyphCache.has(char)) {
+    const g = glyph(char);
+    glyphCache.set(char, g && (RES === 2 ? scale2x(g, "0") : g));
+  }
+  return glyphCache.get(char);
+}
+
 function drawGlyph(t: PixelTarget, char: string, x: number, y: number, color: string): void {
-  glyph(char)?.forEach((line, dy) => {
+  hiResGlyph(char)?.forEach((line, dy) => {
     for (let dx = 0; dx < line.length; dx++) if (line[dx] === "1") t.fillRect(x + dx, y + dy, 1, 1, color);
   });
 }
@@ -241,7 +271,7 @@ function drawTile(t: PixelTarget, palette: TilePalette, col: number, row: number
     t.fillRect(x + start + width - 2, y + dy, 2, 1, palette.edge);
   }
   // Stone speckles
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 16; i++) {
     const dy = 2 + Math.floor(hash(col, row, i) * (TILE_H - 4));
     const [start, width] = diamondRow(dy);
     const dx = start + 2 + Math.floor(hash(row, col, i, 9) * Math.max(1, width - 4));
@@ -257,7 +287,7 @@ function drawTile(t: PixelTarget, palette: TilePalette, col: number, row: number
  * Outline, shadow (d) and glow (e) pixels keep their flat colours.
  */
 function drawSprite(t: PixelTarget, sprite: string[], palette: Record<SpriteKey, string>, x: number, y: number, mirror: boolean): void {
-  const rows = sprite.map((line) => (mirror ? [...line].reverse().join("") : line));
+  const rows = pieceSprite(sprite).map((line) => (mirror ? [...line].reverse().join("") : line));
   const ramps = lightingRamps(palette);
   const bottom = rows.length - 1;
   rows.forEach((line, dy) => {
@@ -278,10 +308,10 @@ function drawSprite(t: PixelTarget, sprite: string[], palette: Record<SpriteKey,
       }
       // Position across the lit body, 0 = left edge, 1 = right edge.
       const u = last > first ? (dx - first) / (last - first) : 0.5;
-      let step = u < 0.18 ? 0 : u < 0.42 ? 1 : u < 0.7 ? 2 : u < 0.88 ? 3 : 4;
+      let step = u < 0.14 ? 0 : u < 0.32 ? 1 : u < 0.55 ? 2 : u < 0.72 ? 3 : u < 0.88 ? 4 : 5;
       // Upward-facing body surfaces catch the light; trim (crowns, bands) keeps its colour.
       if (key !== "a" && (rows[dy - 1]?.[dx] === "o" || rows[dy - 1]?.[dx] === ".")) step -= 1;
-      if (dy >= bottom - 2) step += 1;
+      if (dy >= bottom - 2 * RES) step += 1;
       const ramp = key === "a" ? ramps.accent : ramps.body;
       t.fillRect(x + dx, y + dy, 1, 1, ramp[Math.max(0, Math.min(ramp.length - 1, step))]!);
     }
@@ -293,14 +323,14 @@ const SHADED = new Set(["b", "h", "s", "a"]);
 
 const rampCache = new WeakMap<Record<SpriteKey, string>, { body: string[]; accent: string[] }>();
 
-/** Five-step colour ramps, brightest first, built from a piece palette. */
+/** Six-step colour ramps, brightest first, built from a piece palette. */
 function lightingRamps(palette: Record<SpriteKey, string>): { body: string[]; accent: string[] } {
   let ramps = rampCache.get(palette);
   if (!ramps) {
     const { h, b, s, a, o } = palette;
     ramps = {
-      body: [h, mix(h, b, 0.5), b, s, mix(s, o, 0.45)],
-      accent: [mix(a, "#ffffff", 0.25), a, a, mix(a, o, 0.25), mix(a, o, 0.45)],
+      body: [h, mix(h, b, 0.5), b, mix(b, s, 0.5), s, mix(s, o, 0.45)],
+      accent: [mix(a, "#ffffff", 0.25), mix(a, "#ffffff", 0.1), a, mix(a, o, 0.15), mix(a, o, 0.3), mix(a, o, 0.45)],
     };
     rampCache.set(palette, ramps);
   }
@@ -318,10 +348,15 @@ function mix(a: string, b: string, amount: number): string {
   );
 }
 
-/** Where a piece standing on this grid cell is drawn: sprite's top-left, given its height. */
+/** A theme's sprite as drawn in the scene: doubled with Scale2x at RES 2. */
+export function pieceSprite(sprite: string[]): string[] {
+  return RES === 2 ? hiResSprite(sprite) : sprite;
+}
+
+/** Where a piece standing on this grid cell is drawn: sprite's top-left, given its (scene) height. */
 export function spriteOrigin(col: number, row: number, height: number): { x: number; y: number } {
   const { x, y } = tileOrigin(col, row);
-  return { x: x + TILE_W / 2 - 8, y: y + TILE_H / 2 + 4 - height };
+  return { x: x + TILE_W / 2 - SPRITE_W / 2, y: y + TILE_H / 2 + 4 * RES - height };
 }
 
 export function renderScene(target: PixelTarget, theme: BoardTheme, state: SceneState): void {
@@ -364,10 +399,11 @@ export function renderScene(target: PixelTarget, theme: BoardTheme, state: Scene
       if (!piece) continue;
       const sprite = theme.sprites[piece.type];
       const { x: tx, y: ty } = tileOrigin(col, row);
-      // Shadow
-      t.fillRect(tx + 10, ty + 10, 12, 2, theme.shadow);
-      t.fillRect(tx + 12, ty + 12, 8, 1, theme.shadow);
-      const origin = spriteOrigin(col, row, sprite.length);
+      // Shadow: a soft oval under the piece
+      t.fillRect(tx + 11 * RES, ty + 10 * RES, 10 * RES, 2 * RES + 1, theme.shadow);
+      t.fillRect(tx + 9 * RES, ty + 10 * RES + 1, 14 * RES, 2 * RES - 1, theme.shadow);
+      t.fillRect(tx + 12 * RES, ty + 12 * RES, 8 * RES, RES, theme.shadow);
+      const origin = spriteOrigin(col, row, pieceSprite(sprite).length);
       drawSprite(t, sprite, theme.pieces[piece.color], origin.x, origin.y, piece.color === "b" && theme.mirrorBlack);
     }
   }
