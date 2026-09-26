@@ -1,6 +1,7 @@
-import type { Color, GameAnalysis, GameRecord } from "../shared/types.ts";
+import type { AgentRun, Color, GameAnalysis, GameRecord } from "../shared/types.ts";
 import { INITIAL_RATING, MOVE_TIME_LIMIT_MS, RATING_K_FACTOR, STOCKFISH_ELO } from "../shared/rules.ts";
 import { parsePastedGame } from "../shared/notation.ts";
+import type { AgentRunner } from "./agents/runner.ts";
 import { analyseGame } from "./analysis.ts";
 import type { GameSort, GameStore, SortOrder } from "./db.ts";
 import type { UciEngine } from "./engine/uci.ts";
@@ -16,9 +17,21 @@ export interface GameServiceDeps {
   getAnalysisEngine: () => Promise<UciEngine>;
   analysisDepth?: number;
   moveTimeLimitMs?: number;
+  /** Runs the Claude Code analysis agents on each game once Stockfish has analysed it. Without it, `agentsOff` says why. */
+  agents?: AgentRunner;
+  agentsOff?: string;
 }
 
 export class GameInProgressError extends Error {}
+
+export class AgentRequestError extends Error {
+  constructor(
+    message: string,
+    readonly reason: "not_found" | "not_ready" | "unavailable",
+  ) {
+    super(message);
+  }
+}
 
 export class GameService {
   private active: Promise<void> | null = null;
@@ -75,16 +88,34 @@ export class GameService {
       const score = outcome.result === "1/2-1/2" ? 0.5 : (outcome.result === "1-0") === (aiColor === "white") ? 1 : 0;
       ratingAfter = updateRating(ratingBefore, STOCKFISH_ELO, score, RATING_K_FACTOR);
     }
-    store.finish(id, { ...outcome, ratingBefore, ratingAfter });
+    const aiSetup = (aiColor === "white" ? white : black).setup ?? null;
+    store.finish(id, { ...outcome, ratingBefore, ratingAfter, aiSetup });
 
     if (outcome.status === "finished" && outcome.sanMoves.length > 0) {
       try {
         const analysis = await this.analyse(outcome.sanMoves);
         store.saveAnalysis(id, analysis, analysis[aiColor].estimatedElo);
+        this.deps.agents?.enqueue(id);
       } catch (err) {
         console.error(`Analysis of game ${id} failed:`, err);
       }
     }
+  }
+
+  agentStatus(): { enabled: boolean; reason?: string } {
+    return this.deps.agents ? { enabled: true } : { enabled: false, reason: this.deps.agentsOff ?? "agent analysis is not set up" };
+  }
+
+  /** Queue the agent analysis of a finished, analysed game, or run it again. */
+  requestAgentAnalysis(id: number): AgentRun {
+    const { agents, store } = this.deps;
+    if (!agents) throw new AgentRequestError(`Agent analysis is off: ${this.agentStatus().reason}`, "unavailable");
+    const game = store.get(id);
+    if (!game) throw new AgentRequestError("Game not found", "not_found");
+    if (game.status !== "finished" || !game.analysis) {
+      throw new AgentRequestError("Only finished games that Stockfish has analysed can go to the agents", "not_ready");
+    }
+    return agents.enqueue(id);
   }
 
   async analyse(sanMoves: string[], startFen?: string): Promise<GameAnalysis> {
@@ -99,10 +130,15 @@ export class GameService {
   }
 
   listGames(sort?: GameSort, order?: SortOrder): GameRecord[] {
-    return this.deps.store.list(sort, order);
+    return this.deps.store.list(sort, order).map((game) => this.withAgentRun(game));
   }
 
   getGame(id: number): GameRecord | null {
-    return this.deps.store.get(id);
+    const game = this.deps.store.get(id);
+    return game && this.withAgentRun(game);
+  }
+
+  private withAgentRun(game: GameRecord): GameRecord {
+    return { ...game, agentRun: this.deps.agents?.run(game.id) ?? null };
   }
 }

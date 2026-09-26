@@ -1,14 +1,16 @@
 import type { GameSort, SortOrder } from "./db.ts";
-import { GameInProgressError, type GameService } from "./service.ts";
+import { AgentRequestError, GameInProgressError, type GameService } from "./service.ts";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const error = (message: string, status: number) => json({ error: message }, status);
+const AGENT_ERROR_STATUS = { not_found: 404, not_ready: 409, unavailable: 503 } as const;
 
 /** API route table for Bun.serve. Kept separate from the server so tests can mount it with fakes. */
 export function apiRoutes(service: GameService) {
   return {
     "/api/status": {
-      GET: () => json({ rating: service.currentRating(), playing: service.isPlaying(), nextAiColor: service.nextAiColor() }),
+      GET: () =>
+        json({ rating: service.currentRating(), playing: service.isPlaying(), nextAiColor: service.nextAiColor(), agents: service.agentStatus() }),
     },
     "/api/games": {
       GET: (req: Request) => {
@@ -30,6 +32,17 @@ export function apiRoutes(service: GameService) {
       GET: (req: Request & { params: { id: string } }) => {
         const game = service.getGame(Number(req.params.id));
         return game ? json(game) : error("Game not found", 404);
+      },
+    },
+    "/api/games/:id/agents": {
+      /** Queue the Claude Code analysis agents on a game (again). */
+      POST: (req: Request & { params: { id: string } }) => {
+        try {
+          return json(service.requestAgentAnalysis(Number(req.params.id)), 202);
+        } catch (err) {
+          if (err instanceof AgentRequestError) return error(err.message, AGENT_ERROR_STATUS[err.reason]);
+          return error(err instanceof Error ? err.message : String(err), 500);
+        }
       },
     },
     "/api/games/:id/pgn": {

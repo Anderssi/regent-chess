@@ -51,9 +51,15 @@ export function spawnTransport(cmd: string[]): UciTransport {
   const proc = Bun.spawn(cmd, { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   const listeners: ((line: string) => void)[] = [];
   const exitListeners: ((error: Error) => void)[] = [];
+  // The head holds startup messages (Lc0 names its network and backend there); the tail goes into exit errors.
+  let stderrHead = "";
   let stderrTail = "";
   (async () => {
-    for await (const chunk of proc.stderr) stderrTail = (stderrTail + new TextDecoder().decode(chunk)).slice(-2000);
+    for await (const chunk of proc.stderr) {
+      const text = new TextDecoder().decode(chunk);
+      if (stderrHead.length < 4000) stderrHead = (stderrHead + text).slice(0, 4000);
+      stderrTail = (stderrTail + text).slice(-2000);
+    }
   })();
   proc.exited.then(async (code) => {
     await Bun.sleep(50); // let the last stderr output arrive
@@ -89,6 +95,7 @@ export function spawnTransport(cmd: string[]): UciTransport {
     onLine(listener) {
       listeners.push(listener);
     },
+    startupLog: () => stderrHead,
     close() {
       try {
         proc.stdin.end();
@@ -106,6 +113,23 @@ export async function launchEngine(cmd = resolveEngineCommand(), name = "Stockfi
     engine.quit();
     throw err;
   }
+  return engine;
+}
+
+/** Analysis search threads and hash; Stockfish's own defaults (1 thread, 16 MB) make deep analysis slow. */
+export const DEFAULT_ANALYSIS_THREADS = 4;
+export const DEFAULT_ANALYSIS_HASH_MB = 256;
+
+/**
+ * A full-strength Stockfish for analysis, with ANALYSIS_THREADS and ANALYSIS_HASH_MB applied as far as the
+ * engine allows (the bundled WASM build is single-threaded).
+ */
+export async function launchAnalysisEngine(env: Record<string, string | undefined> = process.env): Promise<UciEngine> {
+  const engine = await launchEngine(resolveEngineCommand(env));
+  const max = (option: string) => Number(/ max (\d+)/.exec(engine.optionLines.find((l) => l.startsWith(`option name ${option} `)) ?? "")?.[1] ?? 0);
+  const threads = Math.min(Number(env.ANALYSIS_THREADS || DEFAULT_ANALYSIS_THREADS), max("Threads"));
+  const hash = Math.min(Number(env.ANALYSIS_HASH_MB || DEFAULT_ANALYSIS_HASH_MB), max("Hash"));
+  await engine.configure({ ...(threads > 1 && { Threads: threads }), ...(hash > 0 && { Hash: hash }) });
   return engine;
 }
 

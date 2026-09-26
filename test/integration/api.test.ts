@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Server } from "bun";
+import { AgentRunner } from "../../src/server/agents/runner.ts";
 import { apiRoutes } from "../../src/server/api.ts";
 import { GameStore } from "../../src/server/db.ts";
-import type { Player } from "../../src/server/players.ts";
+import { PlayerFailure, type Player } from "../../src/server/players.ts";
 import { GameService } from "../../src/server/service.ts";
 import type { GameRecord } from "../../src/shared/types.ts";
-import { fakeEngine, scriptedPlayer } from "../helpers/fakes.ts";
+import { fakeEngine, firstMovePlayer, scriptedPlayer } from "../helpers/fakes.ts";
 
 let server: Server<unknown>;
 let base: string;
@@ -41,8 +42,13 @@ const post = (path: string, body?: unknown) =>
   fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 
 describe("HTTP API", () => {
-  test("status reports the starting rating and Lc0's next colour", async () => {
-    expect(await (await get("/api/status")).json()).toEqual({ rating: 1500, playing: false, nextAiColor: "white" });
+  test("status reports the starting rating, Lc0's next colour and whether agent analysis is on", async () => {
+    expect(await (await get("/api/status")).json()).toEqual({
+      rating: 1500,
+      playing: false,
+      nextAiColor: "white",
+      agents: { enabled: false, reason: "agent analysis is not set up" },
+    });
   });
 
   test("starting a game, rejecting a second one while it runs, then reading the result", async () => {
@@ -99,5 +105,53 @@ describe("HTTP API", () => {
     expect(res.status).toBe(422);
     expect((await res.json()).error).toContain("Ke3");
     expect((await post("/api/analyse", {})).status).toBe(400);
+  });
+
+  test("games can't go to the agents while agent analysis is off", async () => {
+    const res = await post("/api/games/1/agents");
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe("Agent analysis is off: agent analysis is not set up");
+  });
+});
+
+describe("HTTP API with agent analysis on", () => {
+  test("a finished game is queued for the agents and shows the run; unknown and aborted games are refused", async () => {
+    const { engine } = fakeEngine();
+    await engine.init();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const agents = new AgentRunner({ launch: async () => (await gate, { ok: true }), reportsSince: () => ["grandmaster", "engine"], log: () => {} });
+    let crash = false;
+    const service = new GameService({
+      store: new GameStore(),
+      createAiPlayer: async () => (crash ? { name: "Lc0", getMove: () => Promise.reject(new PlayerFailure("crashed")) } : scriptedPlayer("Lc0", ["f3", "g4"])),
+      // Once Lc0 crashes it plays Black, so White has to make a legal first move.
+      createStockfishPlayer: async () => (crash ? firstMovePlayer("Stockfish (1600)") : scriptedPlayer("Stockfish (1600)", ["e5", "Qh4#"])),
+      getAnalysisEngine: async () => engine,
+      analysisDepth: 1,
+      agents,
+    });
+    const agentServer = Bun.serve({ port: 0, routes: apiRoutes(service) });
+    const url = (path: string) => agentServer.url.origin + path;
+    try {
+      const game = await service.startGame();
+      await service.waitForActiveGame();
+      expect(((await (await fetch(url(`/api/games/${game.id}`))).json()) as GameRecord).agentRun?.status).toBe("running");
+      release();
+      await agents.idle();
+      const queued = await fetch(url(`/api/games/${game.id}/agents`), { method: "POST" });
+      expect(queued.status).toBe(202);
+      expect((await queued.json()).status).toBe("queued");
+      await agents.idle();
+
+      crash = true;
+      const aborted = await service.startGame();
+      await service.waitForActiveGame();
+      expect((await fetch(url(`/api/games/${aborted.id}/agents`), { method: "POST" })).status).toBe(409);
+      expect((await fetch(url("/api/games/999/agents"), { method: "POST" })).status).toBe(404);
+      expect(await (await fetch(url("/api/status"))).json()).toMatchObject({ agents: { enabled: true } });
+    } finally {
+      agentServer.stop(true);
+    }
   });
 });

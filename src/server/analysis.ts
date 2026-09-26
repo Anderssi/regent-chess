@@ -1,5 +1,6 @@
 import { Chess } from "chess.js";
 import type { Color, GameAnalysis, PlyAnalysis, SideSummary } from "../shared/types.ts";
+import { uciToSanLine } from "../shared/notation.ts";
 import { clampEval, eloFromAcpl, moveAccuracy, winPercent } from "./elo.ts";
 import { scoreToCp, type UciEngine } from "./engine/uci.ts";
 import { tryMove } from "./game-loop.ts";
@@ -23,9 +24,7 @@ async function evaluate(engine: UciEngine, chess: Chess, depth: number): Promise
 }
 
 function uciToSan(fen: string, uci: string | null): string | null {
-  if (!uci) return null;
-  const move = tryMove(new Chess(fen), uci);
-  return move?.san ?? null;
+  return uci ? (uciToSanLine(fen, [uci])[0] ?? null) : null;
 }
 
 function summarise(plies: PlyAnalysis[], color: Color): SideSummary {

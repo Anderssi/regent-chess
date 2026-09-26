@@ -1,7 +1,19 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Color, GameAnalysis, GameRecord, GameResult, GameStatus, Termination } from "../shared/types.ts";
+import {
+  AGENT_NAMES,
+  type AgentName,
+  type AgentReport,
+  type Color,
+  type EngineSetup,
+  type GameAnalysis,
+  type GameRecord,
+  type GameResult,
+  type GameStatus,
+  type MoveSearch,
+  type Termination,
+} from "../shared/types.ts";
 
 export type GameSort = "date" | "elo";
 export type SortOrder = "asc" | "desc";
@@ -23,7 +35,19 @@ interface GameRow {
   rating_after: number | null;
   error: string | null;
   analysis: string | null;
+  ai_setup: string | null;
 }
+
+interface ReportRow {
+  game_id: number;
+  agent: AgentName;
+  created_at: string;
+  report: string;
+}
+
+/** Every games column except search_log, which is large and only read on its own (see searchLog()). */
+const GAME_COLUMNS =
+  "id, created_at, finished_at, status, ai_color, white, black, result, termination, san_moves, pgn, ai_elo_estimate, rating_before, rating_after, error, analysis, ai_setup";
 
 export class GameStore {
   private db: Database;
@@ -32,6 +56,8 @@ export class GameStore {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path, { create: true, strict: true });
     this.db.run("PRAGMA journal_mode = WAL");
+    // The server, match scripts and the agents' CLI may all write at the same moment.
+    this.db.run("PRAGMA busy_timeout = 5000");
     this.db.run(`CREATE TABLE IF NOT EXISTS games (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -48,25 +74,43 @@ export class GameStore {
       rating_before INTEGER,
       rating_after INTEGER,
       error TEXT,
-      analysis TEXT
+      analysis TEXT,
+      ai_setup TEXT,
+      search_log TEXT
+    )`);
+    this.db.run(`CREATE TABLE IF NOT EXISTS agent_reports (
+      game_id INTEGER NOT NULL REFERENCES games(id),
+      agent TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      report TEXT NOT NULL,
+      PRIMARY KEY (game_id, agent)
     )`);
     this.migrate();
   }
 
-  /** Databases from when our AI was Claude used claude_* column names. */
   private migrate(): void {
     const columns = new Set(this.db.query<{ name: string }, []>("PRAGMA table_info(games)").all().map((c) => c.name));
+    // Databases from when our AI was Claude used claude_* column names.
     if (columns.has("claude_color")) this.db.run("ALTER TABLE games RENAME COLUMN claude_color TO ai_color");
     if (columns.has("claude_elo_estimate")) this.db.run("ALTER TABLE games RENAME COLUMN claude_elo_estimate TO ai_elo_estimate");
+    // Engine setup and search data came later. Another process may be adding them at the same moment.
+    for (const column of ["ai_setup", "search_log"]) {
+      if (columns.has(column)) continue;
+      try {
+        this.db.run(`ALTER TABLE games ADD COLUMN ${column} TEXT`);
+      } catch (err) {
+        if (!String(err).includes("duplicate column")) throw err;
+      }
+    }
   }
 
   create(game: { aiColor: Color; white: string; black: string }): GameRecord {
     const row = this.db
       .query<GameRow, [Color, string, string]>(
-        "INSERT INTO games (status, ai_color, white, black) VALUES ('in_progress', ?, ?, ?) RETURNING *",
+        `INSERT INTO games (status, ai_color, white, black) VALUES ('in_progress', ?, ?, ?) RETURNING ${GAME_COLUMNS}`,
       )
       .get(game.aiColor, game.white, game.black)!;
-    return toRecord(row);
+    return toRecord(row, []);
   }
 
   updateMoves(id: number, sanMoves: string[], pgn: string): void {
@@ -84,12 +128,15 @@ export class GameStore {
       error: string | null;
       ratingBefore: number | null;
       ratingAfter: number | null;
+      searchLog?: (MoveSearch | null)[];
+      aiSetup?: EngineSetup | null;
     },
   ): void {
     this.db
       .query(
         `UPDATE games SET status = ?, result = ?, termination = ?, san_moves = ?, pgn = ?, error = ?,
-         rating_before = ?, rating_after = ?, finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+         rating_before = ?, rating_after = ?, search_log = ?, ai_setup = ?,
+         finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
       )
       .run(
         data.status,
@@ -100,6 +147,8 @@ export class GameStore {
         data.error,
         data.ratingBefore,
         data.ratingAfter,
+        data.searchLog ? JSON.stringify(data.searchLog) : null,
+        data.aiSetup ? JSON.stringify(data.aiSetup) : null,
         id,
       );
   }
@@ -111,8 +160,10 @@ export class GameStore {
   }
 
   get(id: number): GameRecord | null {
-    const row = this.db.query<GameRow, [number]>("SELECT * FROM games WHERE id = ?").get(id);
-    return row ? toRecord(row) : null;
+    const row = this.db.query<GameRow, [number]>(`SELECT ${GAME_COLUMNS} FROM games WHERE id = ?`).get(id);
+    if (!row) return null;
+    const reports = this.db.query<ReportRow, [number]>("SELECT * FROM agent_reports WHERE game_id = ?").all(id);
+    return toRecord(row, reports);
   }
 
   list(sort: GameSort = "date", order: SortOrder = "desc"): GameRecord[] {
@@ -122,7 +173,35 @@ export class GameStore {
       sort === "elo"
         ? `ai_elo_estimate IS NULL, ai_elo_estimate ${dir}, id ${dir}`
         : `created_at ${dir}, id ${dir}`;
-    return this.db.query<GameRow, []>(`SELECT * FROM games ORDER BY ${orderBy}`).all().map(toRecord);
+    const reports = Map.groupBy(this.db.query<ReportRow, []>("SELECT * FROM agent_reports").all(), (r) => r.game_id);
+    return this.db
+      .query<GameRow, []>(`SELECT ${GAME_COLUMNS} FROM games ORDER BY ${orderBy}`)
+      .all()
+      .map((row) => toRecord(row, reports.get(row.id) ?? []));
+  }
+
+  /** Each engine's own search for each ply of a game, or null if it wasn't recorded. */
+  searchLog(id: number): (MoveSearch | null)[] | null {
+    const row = this.db.query<{ search_log: string | null }, [number]>("SELECT search_log FROM games WHERE id = ?").get(id);
+    return row?.search_log ? JSON.parse(row.search_log) : null;
+  }
+
+  /** Save an agent's report on a game, replacing its earlier one. */
+  saveAgentReport(report: AgentReport): void {
+    const { gameId, agent, createdAt, ...content } = report;
+    this.db
+      .query(
+        `INSERT INTO agent_reports (game_id, agent, created_at, report) VALUES (?, ?, ?, ?)
+         ON CONFLICT (game_id, agent) DO UPDATE SET created_at = excluded.created_at, report = excluded.report`,
+      )
+      .run(gameId, agent, createdAt, JSON.stringify(content));
+  }
+
+  /** Whether a game is being played right now, by the server or a match script. Older rows are left over from crashes. */
+  hasRecentGameInProgress(): boolean {
+    return !!this.db
+      .query("SELECT 1 FROM games WHERE status = 'in_progress' AND created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours')")
+      .get();
   }
 
   /** The colour our AI played in the most recent finished game, if any. Aborted games don't count. */
@@ -154,7 +233,7 @@ export class GameStore {
   }
 }
 
-function toRecord(row: GameRow): GameRecord {
+function toRecord(row: GameRow, reports: ReportRow[]): GameRecord {
   return {
     id: row.id,
     createdAt: row.created_at,
@@ -172,5 +251,9 @@ function toRecord(row: GameRow): GameRecord {
     ratingAfter: row.rating_after,
     error: row.error,
     analysis: row.analysis ? JSON.parse(row.analysis) : null,
+    aiSetup: row.ai_setup ? JSON.parse(row.ai_setup) : null,
+    agentReports: reports
+      .map((r) => ({ gameId: r.game_id, agent: r.agent, createdAt: r.created_at, ...JSON.parse(r.report) }))
+      .sort((a, b) => AGENT_NAMES.indexOf(a.agent) - AGENT_NAMES.indexOf(b.agent)),
   };
 }

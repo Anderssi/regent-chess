@@ -18,7 +18,7 @@ describe("real Stockfish", () => {
     const chess = new Chess();
     chess.move("e4");
     const started = Date.now();
-    const move = await player.getMove({
+    const { move } = await player.getMove({
       fen: chess.fen(),
       color: "black",
       sanHistory: chess.history(),

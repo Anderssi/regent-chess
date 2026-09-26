@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { GameStore } from "../../src/server/db.ts";
-import type { GameAnalysis } from "../../src/shared/types.ts";
+import type { AgentName, AgentReport, EngineSetup, GameAnalysis, MoveSearch } from "../../src/shared/types.ts";
 
 const analysis = (elo: number): GameAnalysis => ({
   plies: [],
@@ -65,8 +65,38 @@ describe("GameStore", () => {
   test("marks games left in progress as aborted", () => {
     const store = new GameStore();
     const g = store.create({ aiColor: "white", white: "C", black: "S" });
+    expect(store.hasRecentGameInProgress()).toBe(true);
     expect(store.abortStale()).toBe(1);
     expect(store.get(g.id)!.status).toBe("aborted");
+    expect(store.hasRecentGameInProgress()).toBe(false);
+  });
+
+  test("stores our engine's setup with the game, and its search log apart from the game list", () => {
+    const store = new GameStore();
+    const g = store.create({ aiColor: "white", white: "Lc0", black: "Stockfish" });
+    const setup: EngineSetup = { name: "Lc0 v0.32.1", command: ["lc0"], movetimeMs: 4000, options: { UCI_ShowWDL: true }, network: "42850.pb.gz", backend: null };
+    const search: MoveSearch = { movetimeMs: 4000, timeMs: 3900, depth: 7, seldepth: 19, nodes: 6021, nps: 1880, eval: 35, wdl: [336, 469, 195], pv: ["f3"], candidates: [] };
+    store.finish(g.id, {
+      status: "finished", result: "1-0", termination: "checkmate", sanMoves: ["f3", "e5"], pgn: "", error: null,
+      ratingBefore: null, ratingAfter: null, searchLog: [search, null], aiSetup: setup,
+    });
+    expect(store.get(g.id)!.aiSetup).toEqual(setup);
+    expect(store.searchLog(g.id)).toEqual([search, null]);
+    expect(store.list()[0]).not.toHaveProperty("searchLog");
+  });
+
+  test("keeps one report per agent and game: a new one replaces the old, and the grandmaster's comes first", () => {
+    const store = new GameStore();
+    const id = finishedGame(store, 2000);
+    const report = (agent: AgentName, createdAt: string, summary: string): AgentReport => ({ gameId: id, agent, createdAt, summary, keyMoments: [], suggestions: [] });
+    store.saveAgentReport(report("engine", "2026-09-26T10:00:00.000Z", "first"));
+    store.saveAgentReport(report("grandmaster", "2026-09-26T10:01:00.000Z", "gm"));
+    store.saveAgentReport(report("engine", "2026-09-26T10:02:00.000Z", "second"));
+    expect(store.get(id)!.agentReports.map((r) => [r.agent, r.summary, r.createdAt])).toEqual([
+      ["grandmaster", "gm", "2026-09-26T10:01:00.000Z"],
+      ["engine", "second", "2026-09-26T10:02:00.000Z"],
+    ]);
+    expect(store.list()[0]!.agentReports).toHaveLength(2);
   });
 });
 
@@ -87,8 +117,10 @@ test("migrates databases created when our AI was Claude", async () => {
   old.close();
 
   const store = new GameStore(path);
-  expect(store.get(1)).toMatchObject({ aiColor: "black", aiEloEstimate: 1650, black: "Claude" });
-  store.create({ aiColor: "white", white: "Lc0", black: "S" });
+  expect(store.get(1)).toMatchObject({ aiColor: "black", aiEloEstimate: 1650, black: "Claude", aiSetup: null, agentReports: [] });
+  const g = store.create({ aiColor: "white", white: "Lc0", black: "S" });
+  store.finish(g.id, { status: "aborted", result: null, termination: null, sanMoves: [], pgn: "", error: "x", ratingBefore: null, ratingAfter: null, searchLog: [] });
+  expect(store.searchLog(g.id)).toEqual([]);
   expect(store.list()).toHaveLength(2);
   store.close();
   new GameStore(path).close(); // migrating twice is harmless

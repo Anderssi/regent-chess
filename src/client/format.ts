@@ -22,6 +22,14 @@ export function aiScore(game: GameRecord): "win" | "draw" | "loss" | null {
   return (game.result === "1-0") === (game.aiColor === "white") ? "win" : "loss";
 }
 
+/** A short note on a game's agent analysis for the game list, or "" if there's nothing to say. */
+export function agentNote(game: GameRecord): string {
+  if (game.agentRun?.status === "failed") return "agent run failed";
+  if (game.agentRun) return "agents analysing…";
+  const n = game.agentReports.length;
+  return n ? `${n} agent report${n > 1 ? "s" : ""}` : "";
+}
+
 export function describeOutcome(game: GameRecord): string {
   if (game.status === "in_progress") return `In progress: ${game.sanMoves.length} plies played`;
   if (game.status === "aborted") return `Aborted${game.error ? `: ${game.error}` : ""}`;

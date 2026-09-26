@@ -1,7 +1,7 @@
 import { Chess, type Move } from "chess.js";
-import type { Color, GameResult, Termination } from "../shared/types.ts";
+import type { Color, GameResult, MoveSearch, Termination } from "../shared/types.ts";
 import { MOVE_TIME_LIMIT_MS } from "../shared/rules.ts";
-import { PlayerFailure, type MoveRequest, type Player } from "./players.ts";
+import { PlayerFailure, type MoveRequest, type PlayedMove, type Player } from "./players.ts";
 
 export interface GameOutcome {
   status: "finished" | "aborted";
@@ -10,6 +10,8 @@ export interface GameOutcome {
   sanMoves: string[];
   pgn: string;
   error: string | null;
+  /** Each engine's own search for each ply; null for plies whose player reported none. */
+  searchLog: (MoveSearch | null)[];
 }
 
 export interface PlayGameOptions {
@@ -77,11 +79,12 @@ export async function playGame(opts: PlayGameOptions): Promise<GameOutcome> {
   for (const [k, v] of Object.entries(opts.headers ?? {})) chess.setHeader(k, v);
   chess.setHeader("White", opts.white.name);
   chess.setHeader("Black", opts.black.name);
+  const searchLog: (MoveSearch | null)[] = [];
 
   const finish = (status: GameOutcome["status"], result: GameResult | null, termination: Termination | null, error: string | null = null): GameOutcome => {
     chess.setHeader("Result", result ?? "*");
     if (termination) chess.setHeader("Termination", termination);
-    return { status, result, termination, sanMoves: chess.history(), pgn: chess.pgn(), error };
+    return { status, result, termination, sanMoves: chess.history(), pgn: chess.pgn(), error, searchLog };
   };
 
   while (true) {
@@ -91,7 +94,8 @@ export async function playGame(opts: PlayGameOptions): Promise<GameOutcome> {
     const color: Color = chess.turn() === "w" ? "white" : "black";
     const player = color === "white" ? opts.white : opts.black;
     try {
-      const move = await requestLegalMove(chess, player, color, limit, now);
+      const { move, search } = await requestLegalMove(chess, player, color, limit, now);
+      searchLog.push(search);
       await opts.onMove?.(move.san, chess.history(), chess.fen());
     } catch (err) {
       if (err instanceof MoveTimeout) {
@@ -110,7 +114,13 @@ export async function playGame(opts: PlayGameOptions): Promise<GameOutcome> {
  * Ask a player for a move until it gives a legal one or its time runs out.
  * Illegal moves are reported back to the player and it may try again within the same time budget.
  */
-async function requestLegalMove(chess: Chess, player: Player, color: Color, limitMs: number, now: () => number): Promise<Move> {
+async function requestLegalMove(
+  chess: Chess,
+  player: Player,
+  color: Color,
+  limitMs: number,
+  now: () => number,
+): Promise<{ move: Move; search: MoveSearch | null }> {
   const deadline = now() + limitMs;
   const controller = new AbortController();
   const rejectedAttempts: MoveRequest["rejectedAttempts"] = [];
@@ -131,7 +141,7 @@ async function requestLegalMove(chess: Chess, player: Player, color: Color, limi
     while (true) {
       const timeLeftMs = deadline - now();
       if (timeLeftMs <= 0) throw new MoveTimeout();
-      let answer: string;
+      let answer: string | PlayedMove;
       try {
         answer = await Promise.race([
           player.getMove({ fen, color, sanHistory: history, legalMoves, rejectedAttempts: [...rejectedAttempts], timeLeftMs, signal: controller.signal }),
@@ -146,9 +156,10 @@ async function requestLegalMove(chess: Chess, player: Player, color: Color, limi
         continue;
       }
       if (now() > deadline) throw new MoveTimeout();
-      const move = tryMove(chess, answer);
-      if (move) return move;
-      rejectedAttempts.push({ move: answer, reason: "illegal or unreadable move" });
+      const { move: text, search } = typeof answer === "string" ? { move: answer, search: undefined } : answer;
+      const move = tryMove(chess, text);
+      if (move) return { move, search: search ?? null };
+      rejectedAttempts.push({ move: text, reason: "illegal or unreadable move" });
     }
   } finally {
     clearTimeout(timer);

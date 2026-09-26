@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { GameAnalysis } from "../../shared/types.ts";
 import { replayPositions } from "../replay.ts";
 import { Board } from "./Board.tsx";
+
+/** A second tab in the drawer, next to the moves. */
+export interface SidePanel {
+  label: string;
+  /** `goToPly` shows the position after that ply on the board. */
+  render: (goToPly: (ply: number) => void) => ReactNode;
+}
 
 export interface GameViewerProps {
   sanMoves: string[];
@@ -10,9 +17,11 @@ export interface GameViewerProps {
   orientation?: "white" | "black";
   /** Open on the final position and keep jumping to the newest move as moves arrive (live games). */
   followLatest?: boolean;
+  sidePanel?: SidePanel;
 }
 
 const DRAWER_KEY = "regent.drawerOpen";
+const TAB_KEY = "regent.drawerTab";
 
 function readDrawerOpen(): boolean {
   try {
@@ -22,15 +31,25 @@ function readDrawerOpen(): boolean {
   }
 }
 
+function readTab(): "moves" | "panel" {
+  try {
+    return localStorage.getItem(TAB_KEY) === "panel" ? "panel" : "moves";
+  } catch {
+    return "moves";
+  }
+}
+
 function formatEval(cp: number): string {
   if (Math.abs(cp) >= 1000) return cp > 0 ? "+M" : "-M";
   return (cp >= 0 ? "+" : "") + (cp / 100).toFixed(2);
 }
 
-export function GameViewer({ sanMoves, startFen, analysis, orientation = "white", followLatest }: GameViewerProps) {
+export function GameViewer({ sanMoves, startFen, analysis, orientation = "white", followLatest, sidePanel }: GameViewerProps) {
   const positions = useMemo(() => replayPositions(sanMoves, startFen), [sanMoves, startFen]);
   const [ply, setPly] = useState(followLatest ? sanMoves.length : 0);
   const [drawerOpen, setDrawerOpen] = useState(readDrawerOpen);
+  const [tab, setTab] = useState(readTab);
+  const boardRef = useRef<HTMLDivElement>(null);
   const toggleDrawer = () =>
     setDrawerOpen((open) => {
       try {
@@ -38,6 +57,18 @@ export function GameViewer({ sanMoves, startFen, analysis, orientation = "white"
       } catch {}
       return !open;
     });
+  const chooseTab = (next: "moves" | "panel") => {
+    setTab(next);
+    try {
+      localStorage.setItem(TAB_KEY, next);
+    } catch {}
+  };
+  const goToPly = (p: number) => {
+    setPly(Math.max(0, Math.min(sanMoves.length, p)));
+    // On narrow screens the drawer sits below the board.
+    boardRef.current?.scrollIntoView?.({ block: "nearest" });
+  };
+  const panel = tab === "panel" ? sidePanel : undefined;
 
   useEffect(() => {
     if (followLatest) setPly(sanMoves.length);
@@ -77,7 +108,7 @@ export function GameViewer({ sanMoves, startFen, analysis, orientation = "white"
 
   return (
     <div className="viewer">
-      <div className="viewer-board">
+      <div className="viewer-board" ref={boardRef}>
         <div className="stage">
           <Board fen={position.fen} orientation={orientation} lastMove={position.lastMove} fullscreen />
         </div>
@@ -106,10 +137,28 @@ export function GameViewer({ sanMoves, startFen, analysis, orientation = "white"
           title={drawerOpen ? "Hide panel" : "Show panel"}
         >
           <span aria-hidden="true">{drawerOpen ? "▸" : "◂"}</span>
-          <span className="drawer-label">{analysis ? "Moves · Accuracy" : "Moves"}</span>
+          <span className="drawer-label">
+            {analysis ? "Moves · Accuracy" : "Moves"}
+            {sidePanel && ` · ${sidePanel.label}`}
+          </span>
         </button>
-        <div className="viewer-side" id="viewer-drawer" hidden={!drawerOpen}>
-          {analysis && (
+        <div className={`viewer-side ${panel ? "wide" : ""}`} id="viewer-drawer" hidden={!drawerOpen}>
+          {sidePanel && (
+            <div className="side-tabs" role="tablist" aria-label="Drawer">
+              <button role="tab" aria-selected={!panel} onClick={() => chooseTab("moves")}>
+                Moves
+              </button>
+              <button role="tab" aria-selected={!!panel} onClick={() => chooseTab("panel")}>
+                {sidePanel.label}
+              </button>
+            </div>
+          )}
+          {panel && (
+            <div role="tabpanel" className="drawer-panel">
+              {panel.render(goToPly)}
+            </div>
+          )}
+          {!panel && analysis && (
             <table className="summary">
               <thead>
                 <tr><th /><th>Accuracy</th><th>ACPL</th><th>Est. Elo</th></tr>
@@ -126,20 +175,22 @@ export function GameViewer({ sanMoves, startFen, analysis, orientation = "white"
               </tbody>
             </table>
           )}
-          <div className="moves">
-            {rows.length === 0 && <p className="muted no-moves">No moves yet.</p>}
-            <table>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.num}>
-                    <td className="num">{r.num}.</td>
-                    {moveCell(r.white)}
-                    {moveCell(r.black)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {!panel && (
+            <div className="moves">
+              {rows.length === 0 && <p className="muted no-moves">No moves yet.</p>}
+              <table>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.num}>
+                      <td className="num">{r.num}.</td>
+                      {moveCell(r.white)}
+                      {moveCell(r.black)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </aside>
     </div>

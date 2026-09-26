@@ -27,11 +27,14 @@ On startup the server checks both engines and prints `Lc0 is ready` and `Stockfi
 | `ANALYSIS_DEPTH` | `12` | Search depth for analysis |
 | `DB_PATH` | `data/regent.sqlite` | Game log |
 | `PORT` | `3000` | |
+| `AGENT_ANALYSIS` | on | `off` stops the server from running the [analysis agents](#agent-analysis) |
+| `CLAUDE_PATH` | `claude` on `PATH` | Claude Code binary for the analysis agents |
+| `AGENT_TIMEOUT_MS` | `2700000` (45 min) | Longest an agent run may take |
 
 ## Modes
 
 - **Play:** starts a game of Pluto (Lc0) vs Stockfish and shows it live. Lc0 alternates between White and Black from game to game, starting with White.
-- **Analyse:** pick a previous game (sortable by date or estimated Elo) or paste a game (PGN or plain moves like `1. e4 e5 2. Nf3`). Stockfish analyses every move and reports eval, centipawn loss, accuracy and the best move. Each stored game has a PGN download.
+- **Analyse:** pick a previous game (sortable by date or estimated Elo) or paste a game (PGN or plain moves like `1. e4 e5 2. Nf3`). Stockfish analyses every move and reports eval, centipawn loss, accuracy and the best move. Each stored game has a PGN download, and an **Agents** tab with the [analysis agents'](#agent-analysis) reports.
 
 ## Rules
 
@@ -49,6 +52,32 @@ Stockfish doesn't output Elo ratings, so the app keeps two numbers:
 1. **Estimated Elo per game.** A full-strength Stockfish analyses each game. Lc0's average centipawn loss (ACPL) is mapped with the heuristic `Elo ≈ 3100 · e^(−0.01·ACPL)`. Accuracy uses the Lichess win-percentage model. See `src/server/elo.ts`. This is an estimate and is shown as one.
 2. **Running rating from results.** The standard Elo formula against a 1600 opponent, starting at 1500 with K = 32.
 
+## Agent analysis
+
+Once Stockfish has analysed a game, two [Claude Code subagents](https://code.claude.com/docs/en/sub-agents) study it and write reports with concrete suggestions for improving Lc0:
+
+- **Grandmaster** (`.claude/agents/chess-grandmaster.md`): a world-class player at Magnus Carlsen's playing strength. Judges Lc0's play and turns what it sees into chess-level advice: positions Lc0 misjudges, slow conversions, missed tactics.
+- **Engine developer** (`.claude/agents/engine-developer.md`): an Lc0 specialist. Diagnoses Lc0's search from its own data (below) and suggests exact changes to the network, UCI options, move time or app code, each with a way to test it.
+
+Each report has a summary, key moments and ranked suggestions, each with the change to make and how to check that it helped. The agents check their lines with Stockfish rather than trusting their own calculation, and saving a report fails if it names a move that is illegal in the position or a ply the game doesn't have.
+
+**How it runs.** When a game ends and Stockfish has analysed it, the server starts Claude Code headless (`claude -p "/analyze-games <id>"`) signed in as you, so no API key is needed. That run may only read the project, run `bun scripts/agents.ts`, write report files in `data/agent-reports` and start the two subagents. Runs go one game at a time; each takes several minutes and uses your Claude plan. The **Agents** tab next to the moves on the analysis page shows the reports and the state of a run, and has a button to run the agents (again). Clicking a move in a report shows it on the board.
+
+You can also run `/analyze-games` in Claude Code. Without arguments it takes up to 10 finished games that are missing a report, oldest first; with game ids it (re-)runs those. The first time a subagent runs `bun scripts/agents.ts` or writes its report file, Claude Code asks for permission; allow it for the session, or add `Bash(bun scripts/agents.ts *)` and `Edit(data/agent-reports/**)` to the project's permission allow list.
+
+**Lc0's search data.** For each of its moves the app records what Lc0 reported: eval and win/draw/loss chances, nodes, nodes per second, depth, time used out of time given, principal variation, and the visits, policy and Q of each root move (Lc0's `UCI_ShowWDL` and `VerboseMoveStats`, which don't slow it down). Each game also records Lc0's version, network, backend and options. Games from before this was added have only their moves and Stockfish's analysis.
+
+**Tools.** `bun scripts/agents.ts` is how the agents read games and save reports, and it's handy by hand too (`bun scripts/agents.ts help` lists everything):
+
+```sh
+bun scripts/agents.ts pending                  # games still missing a report
+bun scripts/agents.ts game 12                  # everything the agents see about game 12
+bun scripts/agents.ts reports --suggestions    # every suggestion so far, highest priority first
+bun scripts/agents.ts lc0 --game 12 --ply 23 --nodes 20000 --option CPuct=2.2   # re-test a position
+```
+
+`lc0` refuses to run while a game or a match batch is using Lc0 (`data/lc0.lock`), so a probe can't skew their results.
+
 ## Board design
 
 The board is isometric pixel art: a starlit board with a space crew for pieces (astronaut pawns, rocket knights, alien bishops, station-tower rooks, ringed-planet queens and a star-crowned commander king). The whole scene is drawn at native resolution (528 × 316 px, twice the resolution the art is designed at) and scaled with nearest-neighbour sampling so the pixels stay sharp. The 16 px sprites and the 3×5 coordinate font are doubled with Scale2x, which rounds off diagonals, and the doubled outlines are thinned back to one pixel (`src/client/iso/upscale.ts`); tiles, stars and candles are drawn at the full resolution. In the app the scene is a full-window backdrop: the sky covers the whole screen, the page's controls float over it in translucent panels, and the board is scaled to fit and centred in the open space between them.
@@ -65,15 +94,17 @@ bun test                 # unit, client and integration tests
 bun run typecheck
 ```
 
-- `test/unit`: rules, game loop (timeouts, retries, draws), UCI parsing, engine players, analysis, Elo math, storage (including the migration from Claude-era databases) and the service
-- `test/client`: renderer (sprites, isometric geometry, pieces drawn on the right squares, highlights) and the board and game viewer components (happy-dom)
-- `test/integration`: real Stockfish (1600-Elo play, analysis), real Lc0 (a legal first move within the limit, and full Lc0 vs Stockfish games as each color), engine crash and restart handling, and the HTTP API. The Lc0 tests skip if `lc0` isn't installed.
+- `test/unit`: rules, game loop (timeouts, retries, draws), UCI parsing (including Lc0's search statistics), engine players, analysis, Elo math, storage (including the migration from Claude-era databases), the service, and agent analysis (report checks, the game as the agents see it, the run queue, the headless Claude Code launch, and that the report format the agents are given passes the checks)
+- `test/client`: renderer (sprites, isometric geometry, pieces drawn on the right squares, highlights) and the board, game viewer and agent report components (happy-dom)
+- `test/integration`: real Stockfish (1600-Elo play, analysis), real Lc0 (a legal first move within the limit, and full Lc0 vs Stockfish games as each color), engine crash and restart handling, the HTTP API, and the agents' command-line tools. The Lc0 tests skip if `lc0` isn't installed. No test calls Claude.
 
 ## Layout
 
 ```
 src/shared   rules, types, notation parsing (used by server and client)
 src/server   Bun server: API, game loop, players (Lc0, Stockfish), UCI engine, analysis, SQLite
+             agents/: report checks, the game as text for the agents, run queue, headless Claude Code launch
 src/client   React UI (served by Bun's HTML bundler); iso/ is the pixel-art renderer
-scripts      render-board.ts: PNG preview of the board
+scripts      render-board.ts: PNG preview of the board; agents.ts: the analysis agents' tools
+.claude      agents/: the grandmaster and engine developer; skills/analyze-games: runs them on games
 ```

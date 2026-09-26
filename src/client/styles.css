@@ -144,3 +144,38 @@ textarea::placeholder { color: var(--muted); font-style: italic; }
 .badge.win { color: var(--win); }
 .badge.loss { color: var(--loss); }
 .badge.draw, .badge.aborted, .badge.in_progress { color: var(--draw); }
+
+/* Drawer tabs: the move list, and the agents' reports next to the board. */
+.side-tabs { display: flex; gap: 6px; flex: none; }
+.side-tabs button { flex: 1; }
+.side-tabs [aria-selected="true"] { background: var(--crimson); color: var(--gold-bright); border-color: var(--gold); }
+.viewer-side.wide { width: clamp(300px, 30vw, 440px); }
+@media (max-width: 720px) {
+  .viewer-side.wide { width: auto; }
+}
+
+/* Scrolls inside the drawer column, like the move list. */
+.drawer-panel { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.agent-status { background: var(--glass); border: 2px solid var(--border); box-shadow: 0 3px 0 #07050c; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); padding: 8px 12px; margin-bottom: 12px; }
+.agent-status p { margin: 0 0 8px; }
+.agent-status .busy { color: var(--gold-bright); animation: agent-pulse 1.6s ease-in-out infinite; }
+@keyframes agent-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-status .busy { animation: none; }
+}
+.agent-report { background: var(--glass); border: 2px solid var(--border); box-shadow: 0 3px 0 #07050c; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); padding: 4px 12px 10px; margin-bottom: 12px; }
+.agent-report > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; cursor: pointer; }
+.agent-report > summary h3 { margin: 8px 0; }
+.agent-report h4 { font: 600 0.95rem var(--pixel); color: var(--gold); margin: 14px 0 6px; }
+.agent-report p { margin: 4px 0; }
+.agent-report ul, .agent-report ol { margin: 0; padding-left: 20px; }
+.agent-report li { margin-bottom: 10px; }
+.priority { font: 0.8rem var(--pixel); text-transform: uppercase; padding: 0 6px; border: 1px solid currentColor; }
+.priority.high { color: var(--loss); }
+.priority.medium { color: var(--gold-bright); }
+.priority.low { color: var(--muted); }
+.agent-report .label { font: 0.8rem var(--pixel); color: var(--gold); margin-right: 4px; }
+.agent-report .change { background: var(--surface-2); padding: 4px 8px; }
+.ply-link { border: none; background: none; box-shadow: none; padding: 0 2px; font-family: var(--serif); color: var(--gold-bright); text-decoration: underline dotted; }
+.ply-link:active:not(:disabled) { transform: none; }
+code { font-family: ui-monospace, monospace; font-size: 0.9em; background: var(--surface-2); padding: 0 4px; }

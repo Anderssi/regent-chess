@@ -30,7 +30,7 @@ describe.skipIf(!lc0Available)("real Lc0", () => {
     const player = await Lc0Player.create(await launch(resolveLc0Command(), "Lc0"), 1000);
     const chess = new Chess();
     const started = Date.now();
-    const move = await player.getMove({
+    const { move } = await player.getMove({
       fen: chess.fen(),
       color: "white",
       sanHistory: [],

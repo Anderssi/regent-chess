@@ -1,9 +1,11 @@
-import type { GameAnalysis, GameRecord } from "../shared/types.ts";
+import type { AgentRun, GameAnalysis, GameRecord } from "../shared/types.ts";
 
 export interface Status {
   rating: number;
   playing: boolean;
   nextAiColor: "white" | "black";
+  /** Whether the server runs the Claude Code analysis agents, and if not, why. */
+  agents: { enabled: boolean; reason?: string };
 }
 
 export interface PastedAnalysis {
@@ -25,6 +27,7 @@ export const api = {
   listGames: (sort: "date" | "elo", order: "asc" | "desc") => request<GameRecord[]>(`/api/games?sort=${sort}&order=${order}`),
   getGame: (id: number) => request<GameRecord>(`/api/games/${id}`),
   startGame: () => request<GameRecord>("/api/games", { method: "POST" }),
+  runAgents: (id: number) => request<AgentRun>(`/api/games/${id}/agents`, { method: "POST" }),
   analyse: (pgn: string) =>
     request<PastedAnalysis>("/api/analyse", {
       method: "POST",

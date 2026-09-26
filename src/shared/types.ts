@@ -43,6 +43,100 @@ export interface GameAnalysis {
   depth: number;
 }
 
+/** One root move from Lc0's move statistics (VerboseMoveStats) at the end of a search. */
+export interface CandidateMove {
+  san: string;
+  /** Visits (N) the move got. */
+  visits: number;
+  /** The network's policy prior (P), 0-100. */
+  policy: number;
+  /** Expected score (Q) from the mover's point of view, -1 to 1; null if never visited. */
+  q: number | null;
+}
+
+/** What an engine reported about its own search for the move it played. */
+export interface MoveSearch {
+  /** Search time the engine was given, and the wall-clock time the move took, in ms. */
+  movetimeMs: number;
+  timeMs: number;
+  depth: number;
+  seldepth: number | null;
+  nodes: number | null;
+  nps: number | null;
+  /** The engine's own evaluation, in centipawns from White's point of view (mates clamped). */
+  eval: number | null;
+  /** Win/draw/loss chances in per mille from White's point of view (Lc0 reports these). */
+  wdl: [number, number, number] | null;
+  /** Principal variation in SAN, starting with the move played. */
+  pv: string[];
+  /** Lc0's root moves, most visited first (empty for engines that don't report them). */
+  candidates: CandidateMove[];
+}
+
+/** How our engine was set up for a game, so analysis can tie advice to settings. */
+export interface EngineSetup {
+  /** Name and version from the UCI handshake, e.g. "Lc0 v0.32.1+git.dirty". */
+  name: string;
+  /** Command line the engine process was started with. */
+  command: string[];
+  /** Search time per move in ms (always capped by the time left on the move clock). */
+  movetimeMs: number;
+  /** UCI options the app sets on top of the engine's defaults. */
+  options: Record<string, string | number | boolean>;
+  /** Network file and compute backend, as the engine reported them when it loaded. */
+  network: string | null;
+  backend: string | null;
+}
+
+export const AGENT_NAMES = ["grandmaster", "engine"] as const;
+export type AgentName = (typeof AGENT_NAMES)[number];
+
+export interface KeyMoment {
+  /** The ply whose move is discussed (1 = White's first move). */
+  ply: number;
+  title: string;
+  comment: string;
+  /** A better move in the position before `ply`, in SAN. */
+  betterMove?: string;
+  /** A checked continuation in SAN, starting with `betterMove`. */
+  line?: string[];
+}
+
+export interface AgentSuggestion {
+  title: string;
+  priority: "high" | "medium" | "low";
+  /** Topic, e.g. "endgame technique" or "time management". */
+  area: string;
+  /** What goes wrong and why, with the evidence. */
+  detail: string;
+  /** Plies that show the problem. */
+  plies: number[];
+  /** The concrete change to make. */
+  change: string;
+  /** How to check that the change helped. */
+  verify: string;
+}
+
+/** A report from one of the Claude Code analysis agents (.claude/agents). */
+export interface AgentReport {
+  gameId: number;
+  agent: AgentName;
+  createdAt: string;
+  summary: string;
+  keyMoments: KeyMoment[];
+  suggestions: AgentSuggestion[];
+}
+
+/** An agent analysis the server has queued, is running, or that failed. Finished runs leave only their reports. */
+export interface AgentRun {
+  status: "queued" | "running" | "failed";
+  /** When the run was queued, started or failed. */
+  since: string;
+  error?: string;
+  /** The Claude Code session, for `claude --resume <id>`. */
+  sessionId?: string;
+}
+
 export interface GameRecord {
   id: number;
   createdAt: string;
@@ -62,4 +156,9 @@ export interface GameRecord {
   ratingAfter: number | null;
   error: string | null;
   analysis: GameAnalysis | null;
+  /** Our engine's setup, recorded for games played since search data was added. */
+  aiSetup: EngineSetup | null;
+  agentReports: AgentReport[];
+  /** Set by the server while an agent analysis of this game is queued or running, or after it failed. */
+  agentRun?: AgentRun | null;
 }

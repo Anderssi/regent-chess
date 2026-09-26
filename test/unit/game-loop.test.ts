@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Chess } from "chess.js";
 import { opponentCanCheckmate, playGame, tryMove } from "../../src/server/game-loop.ts";
-import { PlayerFailure } from "../../src/server/players.ts";
+import { PlayerFailure, type PlayedMove, type Player } from "../../src/server/players.ts";
+import type { MoveSearch } from "../../src/shared/types.ts";
 import { scriptedPlayer } from "../helpers/fakes.ts";
 
 describe("playGame", () => {
@@ -93,6 +94,22 @@ describe("playGame", () => {
       black: scriptedPlayer("B", ["Nf6", "Ng8", "Nf6", "Ng8"]),
     });
     expect(out).toMatchObject({ result: "1/2-1/2", termination: "threefold_repetition" });
+  });
+
+  test("records each engine's search for the ply it played; illegal attempts leave nothing", async () => {
+    const search = (nodes: number): MoveSearch => ({
+      movetimeMs: 100, timeMs: 90, depth: 3, seldepth: null, nodes, nps: null, eval: 0, wdl: null, pv: [], candidates: [],
+    });
+    const answers = (name: string, moves: (string | PlayedMove)[]): Player => {
+      let i = 0;
+      return { name, getMove: async () => moves[i++]! };
+    };
+    const out = await playGame({
+      white: answers("W", [{ move: "Ke2", search: search(1) }, { move: "f3", search: search(2) }, "g4"]),
+      black: answers("B", ["e5", { move: "d8h4", search: search(3) }]),
+    });
+    expect(out.sanMoves).toEqual(["f3", "e5", "g4", "Qh4#"]);
+    expect(out.searchLog.map((s) => s?.nodes ?? null)).toEqual([2, null, null, 3]);
   });
 
   test("onMove is called after every move", async () => {

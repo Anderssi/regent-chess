@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import type { GameAnalysis, GameRecord } from "../../shared/types.ts";
-import { api } from "../api.ts";
+import { api, type Status } from "../api.ts";
 import { AI_NAME } from "../../shared/rules.ts";
-import { aiScore, describeOutcome, playerName } from "../format.ts";
+import { agentNote, aiScore, describeOutcome, playerName } from "../format.ts";
+import { AgentReports } from "./AgentReports.tsx";
 import { GameViewer } from "./GameViewer.tsx";
 
 interface Selected {
@@ -13,7 +14,11 @@ interface Selected {
   analysis: GameAnalysis | null;
   orientation: "white" | "black";
   pgnUrl?: string;
+  /** For stored games: the record, kept fresh while its agent analysis runs. */
+  game?: GameRecord;
 }
+
+const AGENT_POLL_MS = 3000;
 
 export function AnalyseMode() {
   const [games, setGames] = useState<GameRecord[]>([]);
@@ -23,12 +28,33 @@ export function AnalyseMode() {
   const [analysing, setAnalysing] = useState(false);
   const [selected, setSelected] = useState<Selected | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [agents, setAgents] = useState<Status["agents"] | null>(null);
+  const [agentError, setAgentError] = useState<string | null>(null);
 
   useEffect(() => {
     api.listGames(sort, order).then(setGames).catch((e) => setError(e.message));
   }, [sort, order]);
 
-  const openGame = (g: GameRecord) =>
+  useEffect(() => {
+    api.status().then((s) => setAgents(s.agents)).catch(() => setAgents(null));
+  }, []);
+
+  /** Replace a stored game everywhere it is shown. */
+  const refreshGame = (fresh: GameRecord) => {
+    setGames((list) => list.map((g) => (g.id === fresh.id ? fresh : g)));
+    setSelected((s) => (s?.game?.id === fresh.id ? { ...s, game: fresh, subtitle: describeOutcome(fresh) } : s));
+  };
+
+  // While the agents are on the selected game, poll it until their reports arrive or the run fails.
+  const watched = selected?.game;
+  useEffect(() => {
+    if (!watched?.agentRun || watched.agentRun.status === "failed") return;
+    const t = setTimeout(() => api.getGame(watched.id).then(refreshGame).catch((e) => setAgentError(e.message)), AGENT_POLL_MS);
+    return () => clearTimeout(t);
+  }, [watched]);
+
+  const openGame = (g: GameRecord) => {
+    setAgentError(null);
     setSelected({
       title: `#${g.id} ${playerName(g.white)} vs ${playerName(g.black)}`,
       subtitle: describeOutcome(g),
@@ -36,7 +62,19 @@ export function AnalyseMode() {
       analysis: g.analysis,
       orientation: g.aiColor,
       pgnUrl: `/api/games/${g.id}/pgn`,
+      game: g,
     });
+  };
+
+  const runAgents = async (id: number) => {
+    setAgentError(null);
+    try {
+      await api.runAgents(id);
+      refreshGame(await api.getGame(id));
+    } catch (e) {
+      setAgentError((e as Error).message);
+    }
+  };
 
   const analysePasted = async () => {
     setError(null);
@@ -111,7 +149,10 @@ export function AnalyseMode() {
               <button onClick={() => openGame(g)}>
                 <span>#{g.id} {AI_NAME} as {g.aiColor}</span>
                 <span className={`badge ${aiScore(g) ?? g.status}`}>{g.result ?? g.status.replace("_", " ")}</span>
-                <span className="muted">Elo {g.aiEloEstimate ?? "—"}</span>
+                <span className="muted">
+                  Elo {g.aiEloEstimate ?? "—"}
+                  {agentNote(g) && ` · ${agentNote(g)}`}
+                </span>
               </button>
             </li>
           ))}
@@ -124,6 +165,14 @@ export function AnalyseMode() {
           startFen={selected?.startFen}
           analysis={selected?.analysis}
           orientation={selected?.orientation ?? "white"}
+          sidePanel={
+            selected?.game && {
+              label: selected.game.agentReports.length ? `Agents (${selected.game.agentReports.length})` : "Agents",
+              render: (goToPly) => (
+                <AgentReports game={selected.game!} agents={agents} onRun={() => runAgents(selected.game!.id)} onGoToPly={goToPly} error={agentError} />
+              ),
+            }
+          }
         />
       </div>
     </section>

@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { AgentRunner } from "../../src/server/agents/runner.ts";
 import { GameStore } from "../../src/server/db.ts";
-import { GameInProgressError, GameService } from "../../src/server/service.ts";
+import { AgentRequestError, GameInProgressError, GameService } from "../../src/server/service.ts";
 import type { Player } from "../../src/server/players.ts";
+import type { EngineSetup } from "../../src/shared/types.ts";
 import { fakeEngine, scriptedPlayer } from "../helpers/fakes.ts";
 
 /** Fool's mate: whoever plays White loses in 4 plies. */
 const foolsMateWhite = () => ["f3", "g4"];
 const foolsMateBlack = () => ["e5", "Qh4#"];
 
-function makeService(opts: { ai?: () => Player; stockfish?: () => Player } = {}) {
+function makeService(opts: { ai?: () => Player; stockfish?: () => Player; agents?: AgentRunner } = {}) {
   const store = new GameStore();
   const { engine } = fakeEngine();
   const ready = engine.init();
@@ -23,6 +25,7 @@ function makeService(opts: { ai?: () => Player; stockfish?: () => Player } = {})
       return engine;
     },
     analysisDepth: 1,
+    agents: opts.agents,
   });
   const setAiColor = () => (aiColor = service.nextAiColor());
   return { service, store, setAiColor };
@@ -91,5 +94,81 @@ describe("GameService", () => {
     const res = await service.analysePasted("1. e4 e5 2. Nf3");
     expect(res.sanMoves).toEqual(["e4", "e5", "Nf3"]);
     expect(res.analysis.plies).toHaveLength(3);
+  });
+});
+
+describe("agent analysis", () => {
+  const SETUP: EngineSetup = { name: "Lc0 v0.32.1", command: ["lc0"], movetimeMs: 4000, options: {}, network: "42850.pb.gz", backend: null };
+
+  /** Agents whose runs wait for `release()`, recording which games they were started on. */
+  function gatedAgents() {
+    const launched: number[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const agents = new AgentRunner({
+      launch: async (id) => (launched.push(id), await gate, { ok: true }),
+      reportsSince: () => ["grandmaster", "engine"],
+      log: () => {},
+    });
+    return { agents, launched, release };
+  }
+
+  test("each game goes to the agents once Stockfish has analysed it, and Lc0's setup is saved with it", async () => {
+    const { agents, launched, release } = gatedAgents();
+    const { service, setAiColor } = makeService({ agents, ai: () => Object.assign(scriptedPlayer("Lc0", ["f3", "g4"]), { setup: SETUP }) });
+    setAiColor();
+    const g = await service.startGame();
+    await service.waitForActiveGame();
+    expect(launched).toEqual([g.id]);
+    expect(service.getGame(g.id)).toMatchObject({ aiSetup: SETUP, agentRun: { status: "running" } });
+    release();
+    await agents.idle();
+    expect(service.getGame(g.id)!.agentRun).toBeNull();
+  });
+
+  test("a finished, analysed game can be sent to the agents again; other requests are refused with a reason", async () => {
+    const { agents, launched, release } = gatedAgents();
+    const { PlayerFailure } = await import("../../src/server/players.ts");
+    let crash = false;
+    const { service, setAiColor } = makeService({
+      agents,
+      ai: () => (crash ? { name: "Lc0", getMove: () => Promise.reject(new PlayerFailure("engine crashed")) } : scriptedPlayer("Lc0", ["f3", "g4"])),
+    });
+    setAiColor();
+    const finished = await service.startGame();
+    await service.waitForActiveGame();
+    release();
+    await agents.idle();
+    crash = true;
+    setAiColor(); // Lc0 is Black now, and crashes after White's first move
+    const aborted = await service.startGame();
+    await service.waitForActiveGame();
+
+    expect(service.requestAgentAnalysis(finished.id).status).toBe("queued");
+    await agents.idle();
+    expect(launched).toEqual([finished.id, finished.id]);
+    const reason = (id: number) => {
+      try {
+        service.requestAgentAnalysis(id);
+      } catch (err) {
+        return err instanceof AgentRequestError ? err.reason : "unexpected";
+      }
+    };
+    expect(reason(999)).toBe("not_found");
+    expect(reason(aborted.id)).toBe("not_ready");
+    expect(service.agentStatus()).toEqual({ enabled: true });
+  });
+
+  test("without a runner, agent analysis is off and says why", () => {
+    const store = new GameStore();
+    const service = new GameService({
+      store,
+      createAiPlayer: async () => scriptedPlayer("Lc0", []),
+      createStockfishPlayer: async () => scriptedPlayer("Stockfish", []),
+      getAnalysisEngine: async () => fakeEngine().engine,
+      agentsOff: "Claude Code (claude) wasn't found",
+    });
+    expect(service.agentStatus()).toEqual({ enabled: false, reason: "Claude Code (claude) wasn't found" });
+    expect(() => service.requestAgentAnalysis(1)).toThrow("Agent analysis is off: Claude Code (claude) wasn't found");
   });
 });
