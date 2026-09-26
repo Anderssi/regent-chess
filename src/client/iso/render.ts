@@ -26,9 +26,12 @@ export interface SceneState {
   checkSquare?: string | null;
   /** Animation time in ms; 0 for a still frame. */
   time?: number;
-  /** Native canvas size; the sky fills it and the board is centred. Defaults to SCENE_W × SCENE_H. */
+  /** Native canvas size; the sky fills it. Defaults to SCENE_W × SCENE_H. */
   width?: number;
   height?: number;
+  /** Top-left of the board scene within the canvas, in native pixels. Defaults to centred. */
+  boardX?: number;
+  boardY?: number;
 }
 
 /**
@@ -72,11 +75,15 @@ function fillDiamond(t: PixelTarget, x: number, y: number, color: string | ((dx:
 function hash(...n: number[]): number {
   let h = 2166136261;
   for (const v of n) h = Math.imul(h ^ (v + 0x9e3779b9), 16777619);
-  return ((h >>> 0) % 10007) / 10007;
+  // Final avalanche, so neighbouring inputs don't land on visible lines (e.g. rows of stars).
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
 /** Stars drift slowly left; the nearer (bright) ones faster than the far ones. Pixels per second. */
-const STAR_DRIFT = { near: 0.8, far: 0.35 };
+const STAR_DRIFT = { near: 2, far: 0.8 };
 /** A shooting star crosses the sky once per period, taking SHOOTING_MS. */
 const SHOOTING_PERIOD_MS = 9000;
 const SHOOTING_MS = 700;
@@ -101,7 +108,34 @@ function drawSky(t: PixelTarget, theme: BoardTheme, time: number, width: number,
       t.fillRect(x, y + 1, 1, 1, theme.stars.dim);
     }
   }
+  drawMist(t, theme, time, width, height);
   if (time > 0) drawShootingStar(t, theme, time, width, height);
+}
+
+/** Faint clouds drifting right across the sky, each at its own height and speed (pixels per second). */
+const MIST = [
+  { y: 0.12, w: 90, h: 10, speed: 1.4, phase: 0.1 },
+  { y: 0.3, w: 130, h: 14, speed: 0.9, phase: 0.55 },
+  { y: 0.55, w: 70, h: 8, speed: 1.8, phase: 0.8 },
+  { y: 0.78, w: 110, h: 12, speed: 1.1, phase: 0.35 },
+];
+
+function drawMist(t: PixelTarget, theme: BoardTheme, time: number, width: number, height: number): void {
+  if (!theme.mist) return;
+  for (const cloud of MIST) {
+    // Wrap over the sky plus the cloud's own width, so it slides fully out before reappearing.
+    const span = width + cloud.w;
+    const left = Math.floor((cloud.phase * span + (time / 1000) * cloud.speed) % span) - cloud.w;
+    const top = Math.floor(cloud.y * height);
+    // A pixel-art lens: rows widen towards the middle, stacked twice for a denser core.
+    for (let dy = 0; dy < cloud.h; dy++) {
+      const bulge = 1 - Math.abs((dy + 0.5) / cloud.h - 0.5) * 2;
+      const rowW = Math.round(cloud.w * (0.35 + 0.65 * Math.sqrt(bulge)));
+      const x = left + Math.floor((cloud.w - rowW) / 2);
+      t.fillRect(x, top + dy, rowW, 1, theme.mist);
+      if (bulge > 0.5) t.fillRect(x + Math.floor(rowW / 4), top + dy, Math.floor(rowW / 2), 1, theme.mist);
+    }
+  }
 }
 
 function drawShootingStar(t: PixelTarget, theme: BoardTheme, time: number, width: number, height: number): void {
@@ -128,15 +162,23 @@ const CANDLES = [
   { x: SCENE_W - 32, y: 12, h: 9 },
 ];
 
+/** Candles float on slow sine waves: up to FLOAT_PX up and down, with a smaller sideways sway. */
+const FLOAT_PX = 3;
+
 function drawCandles(t: PixelTarget, theme: BoardTheme, time: number): void {
   const c = theme.candles;
   if (!c) return;
   CANDLES.forEach((candle, i) => {
-    const bob = time > 0 ? Math.round(Math.sin(time / 700 + i * 1.7)) : 0;
-    const x = candle.x;
+    // Each candle has its own period (4.5-6.5 s) and phase, so they drift independently.
+    const period = 4500 + (i % 3) * 1000;
+    const bob = time > 0 ? Math.round(FLOAT_PX * Math.sin((time / period) * 2 * Math.PI + i * 1.7)) : 0;
+    const sway = time > 0 ? Math.round(Math.sin((time / (period * 1.7)) * 2 * Math.PI + i)) : 0;
+    const x = candle.x + sway;
     const y = candle.y + bob;
-    // Glow
-    t.fillRect(x - 4, y - 7, 11, 9, c.glow);
+    // Glow: breathes a pixel wider on alternate flame frames
+    const frame = time > 0 ? Math.floor(time / 180 + i) % 3 : 0;
+    const pulse = frame === 0 ? 1 : 0;
+    t.fillRect(x - 4 - pulse, y - 7 - pulse, 11 + pulse * 2, 9 + pulse * 2, c.glow);
     t.fillRect(x - 2, y - 9, 7, 13, c.glow);
     // Wax with a shaded right edge and a drip
     t.fillRect(x, y, 3, candle.h, c.wax);
@@ -144,7 +186,6 @@ function drawCandles(t: PixelTarget, theme: BoardTheme, time: number): void {
     t.fillRect(x, y, 1, 3 + (i % 2), c.wax);
     t.fillRect(x - 1, y + 1, 1, 2, c.wax);
     // Flame: flickers between frames
-    const frame = time > 0 ? Math.floor(time / 180 + i) % 3 : 0;
     const [core, mid, outer] = c.flame;
     t.fillRect(x + 1, y - 4 + (frame === 2 ? 1 : 0), 1, 1, outer!);
     t.fillRect(x, y - 3, 3, 2, mid!);
@@ -208,13 +249,73 @@ function drawTile(t: PixelTarget, palette: TilePalette, col: number, row: number
   }
 }
 
+/**
+ * Draws a sprite with procedural lighting so pieces read as rounded solids. The light comes from the
+ * upper left in screen space (so mirrored sprites are lit the same way). Across each row the body
+ * runs highlight → base → shade → deep shade like a lit cylinder (trim more gently, so it keeps its
+ * colour); body surfaces facing up catch extra light, and the lowest rows darken near the board.
+ * Outline, shadow (d) and glow (e) pixels keep their flat colours.
+ */
 function drawSprite(t: PixelTarget, sprite: string[], palette: Record<SpriteKey, string>, x: number, y: number, mirror: boolean): void {
-  sprite.forEach((line, dy) => {
+  const rows = sprite.map((line) => (mirror ? [...line].reverse().join("") : line));
+  const ramps = lightingRamps(palette);
+  const bottom = rows.length - 1;
+  rows.forEach((line, dy) => {
+    let first = -1;
+    let last = -1;
     for (let dx = 0; dx < line.length; dx++) {
-      const key = line[mirror ? line.length - 1 - dx : dx] as SpriteKey | ".";
-      if (key !== ".") t.fillRect(x + dx, y + dy, 1, 1, palette[key]);
+      if (SHADED.has(line[dx]!)) {
+        if (first < 0) first = dx;
+        last = dx;
+      }
+    }
+    for (let dx = 0; dx < line.length; dx++) {
+      const key = line[dx] as SpriteKey | ".";
+      if (key === ".") continue;
+      if (!SHADED.has(key)) {
+        t.fillRect(x + dx, y + dy, 1, 1, palette[key]);
+        continue;
+      }
+      // Position across the lit body, 0 = left edge, 1 = right edge.
+      const u = last > first ? (dx - first) / (last - first) : 0.5;
+      let step = u < 0.18 ? 0 : u < 0.42 ? 1 : u < 0.7 ? 2 : u < 0.88 ? 3 : 4;
+      // Upward-facing body surfaces catch the light; trim (crowns, bands) keeps its colour.
+      if (key !== "a" && (rows[dy - 1]?.[dx] === "o" || rows[dy - 1]?.[dx] === ".")) step -= 1;
+      if (dy >= bottom - 2) step += 1;
+      const ramp = key === "a" ? ramps.accent : ramps.body;
+      t.fillRect(x + dx, y + dy, 1, 1, ramp[Math.max(0, Math.min(ramp.length - 1, step))]!);
     }
   });
+}
+
+/** Sprite keys that get lit; h and s are treated as body, since the lighting replaces them. */
+const SHADED = new Set(["b", "h", "s", "a"]);
+
+const rampCache = new WeakMap<Record<SpriteKey, string>, { body: string[]; accent: string[] }>();
+
+/** Five-step colour ramps, brightest first, built from a piece palette. */
+function lightingRamps(palette: Record<SpriteKey, string>): { body: string[]; accent: string[] } {
+  let ramps = rampCache.get(palette);
+  if (!ramps) {
+    const { h, b, s, a, o } = palette;
+    ramps = {
+      body: [h, mix(h, b, 0.5), b, s, mix(s, o, 0.45)],
+      accent: [mix(a, "#ffffff", 0.25), a, a, mix(a, o, 0.25), mix(a, o, 0.45)],
+    };
+    rampCache.set(palette, ramps);
+  }
+  return ramps;
+}
+
+/** Blend two "#rrggbb" colours; amount 0 = a, 1 = b. */
+function mix(a: string, b: string, amount: number): string {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  return (
+    "#" +
+    [0, 1, 2]
+      .map((i) => Math.round(channel(a, i) * (1 - amount) + channel(b, i) * amount).toString(16).padStart(2, "0"))
+      .join("")
+  );
 }
 
 /** Where a piece standing on this grid cell is drawn: sprite's top-left, given its height. */
@@ -228,7 +329,7 @@ export function renderScene(target: PixelTarget, theme: BoardTheme, state: Scene
   const width = state.width ?? SCENE_W;
   const height = state.height ?? SCENE_H;
   drawSky(target, theme, time, width, height);
-  const t = offsetTarget(target, Math.floor((width - SCENE_W) / 2), Math.floor((height - SCENE_H) / 2));
+  const t = offsetTarget(target, state.boardX ?? Math.floor((width - SCENE_W) / 2), state.boardY ?? Math.floor((height - SCENE_H) / 2));
   drawCandles(t, theme, time);
   drawSlab(t, theme);
   drawCoordinates(t, theme, state.orientation);

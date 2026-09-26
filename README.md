@@ -51,10 +51,10 @@ Stockfish doesn't output Elo ratings, so the app keeps two numbers:
 
 ## Board design
 
-The board is isometric pixel art with a wizard's-tower theme. The whole scene is drawn at native resolution (264 × 158 px) and scaled up with nearest-neighbour sampling so the pixels stay sharp. In the game viewer it grows to fill the space beside the move drawer (and the window height), never smaller than ×2 (528 × 316 px) unless the screen itself is narrower.
+The board is isometric pixel art with a wizard's-tower theme. The whole scene is drawn at native resolution (264 × 158 px) and scaled up with nearest-neighbour sampling so the pixels stay sharp. In the app the scene is a full-window backdrop: the sky covers the whole screen, the page's controls float over it in translucent panels, and the board is scaled to fit and centred in the open space between them.
 
 - `src/client/theme.ts` holds everything visual: tile, slab, sky, candle and highlight colors, the piece palettes for each side, and the piece sprites. Sprites are 16 px wide text grids using the palette keys (`o` outline, `b` base, `s` shade, `h` highlight, `a` accent, `d` shadow, `e` glow). To redesign, edit or copy `wizardTheme`.
-- `src/client/iso/render.ts` is the renderer: isometric geometry, drawing back to front, coordinates engraved on the slab, and the sky animation: floating candles, twinkling and slowly drifting stars, and the odd shooting star (turned off when the OS asks for reduced motion). It draws onto any `PixelTarget`, which is the canvas in the app and a pixel buffer in tests.
+- `src/client/iso/render.ts` is the renderer: isometric geometry, drawing back to front, piece lighting (pieces are shaded as rounded solids lit from the upper left), coordinates engraved on the slab, and the sky animation: floating candles, twinkling and drifting stars, drifting mist, and the odd shooting star (turned off when the OS asks for reduced motion). It draws onto any `PixelTarget`, which is the canvas in the app and a pixel buffer in tests.
 - Preview a design without starting the app: `bun scripts/render-board.ts "<fen>" board.png white 3` writes a PNG.
 - The canvas is hidden from screen readers. A visually hidden grid lists every square and its piece instead.
 

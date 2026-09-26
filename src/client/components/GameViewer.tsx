@@ -78,20 +78,24 @@ export function GameViewer({ sanMoves, startFen, analysis, orientation = "white"
   return (
     <div className="viewer">
       <div className="viewer-board">
-        <Board fen={position.fen} orientation={orientation} lastMove={position.lastMove} fit />
-        <div className="nav">
-          <button onClick={() => setPly(0)} aria-label="First move">⏮</button>
-          <button onClick={() => setPly((p) => Math.max(0, p - 1))} aria-label="Previous move">◀</button>
-          <span className="ply-counter">{ply} / {sanMoves.length}</span>
-          <button onClick={() => setPly((p) => Math.min(sanMoves.length, p + 1))} aria-label="Next move">▶</button>
-          <button onClick={() => setPly(sanMoves.length)} aria-label="Last move">⏭</button>
+        <div className="stage">
+          <Board fen={position.fen} orientation={orientation} lastMove={position.lastMove} fullscreen />
         </div>
-        {current && (
-          <p className="ply-info">
-            {current.san}: eval {formatEval(current.evalAfter)}, accuracy {current.accuracy}%
-            {current.bestMove && current.bestMove !== current.san && <> · best was {current.bestMove}</>}
-          </p>
-        )}
+        <div className="box nav-box">
+          <div className="nav">
+            <button onClick={() => setPly(0)} aria-label="First move">⏮</button>
+            <button onClick={() => setPly((p) => Math.max(0, p - 1))} aria-label="Previous move">◀</button>
+            <span className="ply-counter">{ply} / {sanMoves.length}</span>
+            <button onClick={() => setPly((p) => Math.min(sanMoves.length, p + 1))} aria-label="Next move">▶</button>
+            <button onClick={() => setPly(sanMoves.length)} aria-label="Last move">⏭</button>
+          </div>
+          {current && (
+            <p className="ply-info">
+              {current.san}: eval {formatEval(current.evalAfter)}, accuracy {current.accuracy}%
+              {current.bestMove && current.bestMove !== current.san && <> · best was {current.bestMove}</>}
+            </p>
+          )}
+        </div>
       </div>
       <aside className={`drawer ${drawerOpen ? "open" : ""}`}>
         <button
@@ -123,6 +127,7 @@ export function GameViewer({ sanMoves, startFen, analysis, orientation = "white"
             </table>
           )}
           <div className="moves">
+            {rows.length === 0 && <p className="muted no-moves">No moves yet.</p>}
             <table>
               <tbody>
                 {rows.map((r) => (

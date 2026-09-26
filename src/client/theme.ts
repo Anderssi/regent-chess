@@ -26,6 +26,8 @@ export interface BoardTheme {
   scale: number;
   sky: string[];
   stars: { bright: string; dim: string };
+  /** Translucent colour ("#rrggbbaa") of the clouds drifting across the sky, or null for none. */
+  mist: string | null;
   tiles: { light: TilePalette; dark: TilePalette };
   slab: { left: string; right: string; trim: string; trimShade: string; bottom: string; engraving: string };
   highlight: { lastMove: string; check: string };
@@ -168,6 +170,7 @@ export const wizardTheme: BoardTheme = {
   scale: 2,
   sky: ["#0b0815", "#0d0a19", "#100c1e", "#130e23", "#161028", "#19122d", "#1c1432", "#1f1637"],
   stars: { bright: "#fff6e0", dim: "#7d72a8" },
+  mist: "#8a7ab812",
   tiles: {
     light: { base: "#c9b48a", speckle: "#b39c70", edge: "#e2d2a6" },
     dark: { base: "#4a3b5c", speckle: "#3c2f4d", edge: "#5f4d75" },

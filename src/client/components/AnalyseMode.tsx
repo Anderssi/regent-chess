@@ -58,8 +58,8 @@ export function AnalyseMode() {
   };
 
   return (
-    <section className="analyse">
-      <aside>
+    <section className="mode analyse">
+      <aside className="box side-panel">
         <h3>Paste a game</h3>
         <textarea
           value={pasted}
@@ -99,29 +99,31 @@ export function AnalyseMode() {
         </ul>
       </aside>
       <div className="analyse-main">
-        {selected ? (
-          <>
-            <h2>{selected.title}</h2>
-            <p className="muted">
-              {selected.subtitle}
-              {selected.pgnUrl && (
-                <>
-                  {" · "}
-                  <a href={selected.pgnUrl}>Download PGN</a>
-                </>
-              )}
-            </p>
-            <GameViewer
-              key={selected.title + selected.sanMoves.length}
-              sanMoves={selected.sanMoves}
-              startFen={selected.startFen}
-              analysis={selected.analysis}
-              orientation={selected.orientation}
-            />
-          </>
-        ) : (
-          <p className="muted">Pick a previous game or paste one to analyse it.</p>
-        )}
+        <div className="box info">
+          {selected ? (
+            <>
+              <h2>{selected.title}</h2>
+              <p className="muted">
+                {selected.subtitle}
+                {selected.pgnUrl && (
+                  <>
+                    {" · "}
+                    <a href={selected.pgnUrl}>Download PGN</a>
+                  </>
+                )}
+              </p>
+            </>
+          ) : (
+            <p className="muted">Pick a previous game or paste one to analyse it.</p>
+          )}
+        </div>
+        <GameViewer
+          key={selected ? selected.title + selected.sanMoves.length : "empty"}
+          sanMoves={selected?.sanMoves ?? []}
+          startFen={selected?.startFen}
+          analysis={selected?.analysis}
+          orientation={selected?.orientation ?? "white"}
+        />
       </div>
     </section>
   );

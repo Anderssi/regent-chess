@@ -90,6 +90,21 @@ describe("renderScene", () => {
     expect(spriteOutlineMatches(buf, "e4", "p", "w", "white")).toBeLessThan(0.3);
   });
 
+  test("pieces are lit from the left for both colours, so they read as rounded", () => {
+    const lum = (hex: string) => [1, 3, 5].reduce((sum, i) => sum + parseInt(hex.slice(i, i + 2), 16), 0);
+    for (const color of ["w", "b"] as const) {
+      const fen = color === "w" ? "4k3/8/8/8/8/8/8/R3K3 w - - 0 1" : "r3k3/8/8/8/8/8/8/4K3 w - - 0 1";
+      const buf = render(fen);
+      const square = color === "w" ? "a1" : "a8";
+      const { col, row } = squareToGrid(square, "white");
+      const origin = spriteOrigin(col, row, wizardTheme.sprites.r.length);
+      // Rook row 9 ("...ohbbbbbbso..."): body pixels run x = 4..11.
+      const y = origin.y + 9;
+      expect(lum(buf.get(origin.x + 4, y))).toBeGreaterThan(lum(buf.get(origin.x + 8, y)));
+      expect(lum(buf.get(origin.x + 8, y))).toBeGreaterThan(lum(buf.get(origin.x + 11, y)));
+    }
+  });
+
   test("highlights the last move", () => {
     const fen = "4k3/8/8/8/8/8/8/4K3 w - - 0 1";
     const plain = render(fen);

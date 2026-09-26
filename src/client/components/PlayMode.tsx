@@ -45,33 +45,37 @@ export function PlayMode() {
   const busy = game?.status === "in_progress" || status?.playing;
 
   return (
-    <section>
-      <div className="toolbar">
-        <button className="primary" onClick={start} disabled={!!busy}>
-          {busy ? "Game in progress…" : "Start new game"}
-        </button>
-        {status && (
-          <span className="muted">
-            Lc0's rating: <strong>{status.rating}</strong> · next game Lc0 plays {game?.status === "in_progress" ? game.aiColor : status.nextAiColor} · Stockfish {STOCKFISH_ELO} · {MOVE_TIME_LIMIT_MS / 1000}s per move
-          </span>
+    <section className="mode">
+      <div className="box info">
+        <div className="toolbar">
+          <button className="primary" onClick={start} disabled={!!busy}>
+            {busy ? "Game in progress…" : "Start new game"}
+          </button>
+          {status && (
+            <span className="muted">
+              Lc0's rating: <strong>{status.rating}</strong> · next game Lc0 plays {game?.status === "in_progress" ? game.aiColor : status.nextAiColor} · Stockfish {STOCKFISH_ELO} · {MOVE_TIME_LIMIT_MS / 1000}s per move
+            </span>
+          )}
+        </div>
+        {error && <p className="error">{error}</p>}
+        {game ? (
+          <>
+            <h2>
+              {game.white} vs {game.black}
+            </h2>
+            <p className="muted">{describeOutcome(game)}</p>
+          </>
+        ) : (
+          <>
+            <h2>The board awaits</h2>
+            <p className="muted">Start a game to watch Lc0 face Stockfish.</p>
+          </>
         )}
       </div>
-      {error && <p className="error">{error}</p>}
-      {!game && (
-        <>
-          <h2>The board awaits</h2>
-          <p className="muted">Start a game to watch Lc0 face Stockfish.</p>
-          <GameViewer sanMoves={[]} orientation="white" />
-        </>
-      )}
-      {game && (
-        <>
-          <h2>
-            {game.white} vs {game.black}
-          </h2>
-          <p className="muted">{describeOutcome(game)}</p>
-          <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.aiColor} followLatest />
-        </>
+      {game ? (
+        <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.aiColor} followLatest />
+      ) : (
+        <GameViewer sanMoves={[]} orientation="white" />
       )}
     </section>
   );

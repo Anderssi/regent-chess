@@ -7,8 +7,8 @@ type Mode = "play" | "analyse";
 export function App() {
   const [mode, setMode] = useState<Mode>("play");
   return (
-    <main>
-      <header>
+    <main className="app">
+      <header className="box">
         <h1>Regent Chess</h1>
         <nav role="tablist">
           <button role="tab" aria-selected={mode === "play"} onClick={() => setMode("play")}>
