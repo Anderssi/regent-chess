@@ -56,6 +56,22 @@ describe("client", () => {
     fireEvent.click(getByText("e5"));
     expect(getByText("2 / 3")).toBeTruthy();
   });
+
+  test("GameViewer's move drawer collapses and expands", async () => {
+    const { render, fireEvent } = await import("@testing-library/react");
+    const { GameViewer } = await import("../../src/client/components/GameViewer.tsx");
+    localStorage.removeItem("regent.drawerOpen");
+    const { getByRole, container } = render(<GameViewer sanMoves={["e4"]} />);
+    const toggle = getByRole("button", { name: /Moves/ });
+    const panel = container.querySelector("#viewer-drawer") as HTMLElement;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(panel.hidden).toBe(true);
+    expect(localStorage.getItem("regent.drawerOpen")).toBe("false");
+    fireEvent.click(toggle);
+    expect(panel.hidden).toBe(false);
+  });
 });
 
 test("replayPositions returns one position per ply plus the start", async () => {

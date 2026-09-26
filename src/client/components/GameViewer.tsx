@@ -12,6 +12,16 @@ export interface GameViewerProps {
   followLatest?: boolean;
 }
 
+const DRAWER_KEY = "regent.drawerOpen";
+
+function readDrawerOpen(): boolean {
+  try {
+    return localStorage.getItem(DRAWER_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
 function formatEval(cp: number): string {
   if (Math.abs(cp) >= 1000) return cp > 0 ? "+M" : "-M";
   return (cp >= 0 ? "+" : "") + (cp / 100).toFixed(2);
@@ -20,6 +30,14 @@ function formatEval(cp: number): string {
 export function GameViewer({ sanMoves, startFen, analysis, orientation = "white", followLatest }: GameViewerProps) {
   const positions = useMemo(() => replayPositions(sanMoves, startFen), [sanMoves, startFen]);
   const [ply, setPly] = useState(followLatest ? sanMoves.length : 0);
+  const [drawerOpen, setDrawerOpen] = useState(readDrawerOpen);
+  const toggleDrawer = () =>
+    setDrawerOpen((open) => {
+      try {
+        localStorage.setItem(DRAWER_KEY, String(!open));
+      } catch {}
+      return !open;
+    });
 
   useEffect(() => {
     if (followLatest) setPly(sanMoves.length);
@@ -60,7 +78,7 @@ export function GameViewer({ sanMoves, startFen, analysis, orientation = "white"
   return (
     <div className="viewer">
       <div className="viewer-board">
-        <Board fen={position.fen} orientation={orientation} lastMove={position.lastMove} />
+        <Board fen={position.fen} orientation={orientation} lastMove={position.lastMove} fit />
         <div className="nav">
           <button onClick={() => setPly(0)} aria-label="First move">⏮</button>
           <button onClick={() => setPly((p) => Math.max(0, p - 1))} aria-label="Previous move">◀</button>
@@ -75,38 +93,50 @@ export function GameViewer({ sanMoves, startFen, analysis, orientation = "white"
           </p>
         )}
       </div>
-      <div className="viewer-side">
-        {analysis && (
-          <table className="summary">
-            <thead>
-              <tr><th /><th>Accuracy</th><th>ACPL</th><th>Est. Elo</th></tr>
-            </thead>
-            <tbody>
-              {(["white", "black"] as const).map((side) => (
-                <tr key={side}>
-                  <th>{side === "white" ? "White" : "Black"}</th>
-                  <td>{analysis[side].accuracy}%</td>
-                  <td>{analysis[side].acpl}</td>
-                  <td>{analysis[side].estimatedElo}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <div className="moves">
-          <table>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.num}>
-                  <td className="num">{r.num}.</td>
-                  {moveCell(r.white)}
-                  {moveCell(r.black)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <aside className={`drawer ${drawerOpen ? "open" : ""}`}>
+        <button
+          className="drawer-toggle"
+          onClick={toggleDrawer}
+          aria-expanded={drawerOpen}
+          aria-controls="viewer-drawer"
+          title={drawerOpen ? "Hide panel" : "Show panel"}
+        >
+          <span aria-hidden="true">{drawerOpen ? "▸" : "◂"}</span>
+          <span className="drawer-label">{analysis ? "Moves · Accuracy" : "Moves"}</span>
+        </button>
+        <div className="viewer-side" id="viewer-drawer" hidden={!drawerOpen}>
+          {analysis && (
+            <table className="summary">
+              <thead>
+                <tr><th /><th>Accuracy</th><th>ACPL</th><th>Est. Elo</th></tr>
+              </thead>
+              <tbody>
+                {(["white", "black"] as const).map((side) => (
+                  <tr key={side}>
+                    <th>{side === "white" ? "White" : "Black"}</th>
+                    <td>{analysis[side].accuracy}%</td>
+                    <td>{analysis[side].acpl}</td>
+                    <td>{analysis[side].estimatedElo}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div className="moves">
+            <table>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.num}>
+                    <td className="num">{r.num}.</td>
+                    {moveCell(r.white)}
+                    {moveCell(r.black)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

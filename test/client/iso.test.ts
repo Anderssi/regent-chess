@@ -106,4 +106,26 @@ describe("renderScene", () => {
     const b = render("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
     expect(Buffer.from(a.data).equals(Buffer.from(b.data))).toBe(true);
   });
+
+  test("the sky moves over time but the board stays put", () => {
+    const fen = "4k3/8/8/8/8/8/8/4K3 w - - 0 1";
+    const early = render(fen, "white", { time: 1000 });
+    const late = render(fen, "white", { time: 20000 });
+    expect(Buffer.from(early.data).equals(Buffer.from(late.data))).toBe(false);
+    const { x, y } = tileOrigin(4, 4);
+    expect(late.get(x + 16, y + 8)).toBe(early.get(x + 16, y + 8));
+  });
+
+  test("a larger canvas fills with sky and centres the board", () => {
+    const fen = "4k3/8/8/8/8/8/8/4K3 w - - 0 1";
+    const small = render(fen);
+    const width = SCENE_W + 100;
+    const height = SCENE_H + 60;
+    const big = new PixelBuffer(width, height);
+    renderScene(big, wizardTheme, { board: new Chess(fen).board(), orientation: "white", width, height });
+    const { x, y } = tileOrigin(3, 4);
+    expect(big.get(x + 16 + 50, y + 8 + 30)).toBe(small.get(x + 16, y + 8));
+    // Every pixel is painted, including the corners beyond the original scene.
+    expect(big.data[(height * width - 1) * 4 + 3]).toBe(255);
+  });
 });

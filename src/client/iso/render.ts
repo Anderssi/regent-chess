@@ -5,10 +5,11 @@ import type { PixelTarget } from "./pixels.ts";
 /** Native (unscaled) geometry of the isometric scene. */
 export const TILE_W = 32;
 export const TILE_H = 16;
-export const SLAB_DEPTH = 8;
-const MARGIN_X = 16;
-const MARGIN_TOP = 44;
-const MARGIN_BOTTOM = 14;
+export const SLAB_DEPTH = 12;
+const MARGIN_X = 4;
+/** Headroom above the back tile for the tallest sprite (the king). */
+const MARGIN_TOP = 14;
+const MARGIN_BOTTOM = 4;
 
 export const SCENE_W = TILE_W * 8 + MARGIN_X * 2;
 export const SCENE_H = MARGIN_TOP + TILE_H * 8 + SLAB_DEPTH + MARGIN_BOTTOM;
@@ -25,6 +26,9 @@ export interface SceneState {
   checkSquare?: string | null;
   /** Animation time in ms; 0 for a still frame. */
   time?: number;
+  /** Native canvas size; the sky fills it and the board is centred. Defaults to SCENE_W × SCENE_H. */
+  width?: number;
+  height?: number;
 }
 
 /**
@@ -71,15 +75,24 @@ function hash(...n: number[]): number {
   return ((h >>> 0) % 10007) / 10007;
 }
 
-function drawSky(t: PixelTarget, theme: BoardTheme, time: number): void {
+/** Stars drift slowly left; the nearer (bright) ones faster than the far ones. Pixels per second. */
+const STAR_DRIFT = { near: 0.8, far: 0.35 };
+/** A shooting star crosses the sky once per period, taking SHOOTING_MS. */
+const SHOOTING_PERIOD_MS = 9000;
+const SHOOTING_MS = 700;
+
+function drawSky(t: PixelTarget, theme: BoardTheme, time: number, width: number, height: number): void {
   const bands = theme.sky;
-  const bandH = Math.ceil(SCENE_H / bands.length);
-  bands.forEach((color, i) => t.fillRect(0, i * bandH, SCENE_W, bandH, color));
-  for (let i = 0; i < 70; i++) {
-    const x = Math.floor(hash(i, 1) * SCENE_W);
-    const y = Math.floor(hash(i, 2) * SCENE_H);
-    const twinkle = time > 0 && hash(i, Math.floor(time / 600)) > 0.85;
+  const bandH = Math.ceil(height / bands.length);
+  bands.forEach((color, i) => t.fillRect(0, i * bandH, width, bandH, color));
+  // Keep the star density of the original scene when the sky is larger.
+  const stars = Math.round((70 * width * height) / (SCENE_W * SCENE_H));
+  for (let i = 0; i < stars; i++) {
     const bright = hash(i, 3) > 0.8;
+    const drift = Math.floor((time / 1000) * (bright ? STAR_DRIFT.near : STAR_DRIFT.far));
+    const x = (((Math.floor(hash(i, 1) * width) - drift) % width) + width) % width;
+    const y = Math.floor(hash(i, 2) * height);
+    const twinkle = time > 0 && hash(i, Math.floor(time / 600)) > 0.85;
     t.fillRect(x, y, 1, 1, bright && !twinkle ? theme.stars.bright : theme.stars.dim);
     if (bright && !twinkle && hash(i, 4) > 0.6) {
       t.fillRect(x - 1, y, 1, 1, theme.stars.dim);
@@ -87,6 +100,22 @@ function drawSky(t: PixelTarget, theme: BoardTheme, time: number): void {
       t.fillRect(x, y - 1, 1, 1, theme.stars.dim);
       t.fillRect(x, y + 1, 1, 1, theme.stars.dim);
     }
+  }
+  if (time > 0) drawShootingStar(t, theme, time, width, height);
+}
+
+function drawShootingStar(t: PixelTarget, theme: BoardTheme, time: number, width: number, height: number): void {
+  const n = Math.floor(time / SHOOTING_PERIOD_MS);
+  const elapsed = time - n * SHOOTING_PERIOD_MS;
+  if (elapsed > SHOOTING_MS) return;
+  // Falls down-left at the isometric 2:1 slope, starting somewhere in the upper sky.
+  const startX = Math.floor(width * (0.3 + 0.6 * hash(n, 7)));
+  const startY = Math.floor(height * 0.35 * hash(n, 8));
+  const travel = Math.floor((elapsed / SHOOTING_MS) * 90);
+  const headX = startX - travel;
+  const headY = startY + Math.floor(travel / 2);
+  for (let k = 0; k < 10; k++) {
+    t.fillRect(headX + k * 2, headY - k, 2, 1, k < 3 ? theme.stars.bright : theme.stars.dim);
   }
 }
 
@@ -148,8 +177,10 @@ function drawCoordinates(t: PixelTarget, theme: BoardTheme, orientation: "white"
     const rankSquare = gridToSquare(7, i, orientation);
     const left = tileOrigin(i, 7);
     const right = tileOrigin(7, i);
-    drawGlyph(t, fileSquare[0]!, left.x + 7, left.y + 13, theme.slab.engraving);
-    drawGlyph(t, rankSquare[1]!, right.x + 23, right.y + 13, theme.slab.engraving);
+    // The slab face starts ~13px below the tile's top; centre the 5px glyph in what's left of it.
+    const dy = 13 + Math.floor((SLAB_DEPTH - 7) / 2);
+    drawGlyph(t, fileSquare[0]!, left.x + 7, left.y + dy, theme.slab.engraving);
+    drawGlyph(t, rankSquare[1]!, right.x + 23, right.y + dy, theme.slab.engraving);
   }
 }
 
@@ -192,9 +223,12 @@ export function spriteOrigin(col: number, row: number, height: number): { x: num
   return { x: x + TILE_W / 2 - 8, y: y + TILE_H / 2 + 4 - height };
 }
 
-export function renderScene(t: PixelTarget, theme: BoardTheme, state: SceneState): void {
+export function renderScene(target: PixelTarget, theme: BoardTheme, state: SceneState): void {
   const time = state.time ?? 0;
-  drawSky(t, theme, time);
+  const width = state.width ?? SCENE_W;
+  const height = state.height ?? SCENE_H;
+  drawSky(target, theme, time, width, height);
+  const t = offsetTarget(target, Math.floor((width - SCENE_W) / 2), Math.floor((height - SCENE_H) / 2));
   drawCandles(t, theme, time);
   drawSlab(t, theme);
   drawCoordinates(t, theme, state.orientation);
@@ -236,6 +270,11 @@ export function renderScene(t: PixelTarget, theme: BoardTheme, state: SceneState
       drawSprite(t, sprite, theme.pieces[piece.color], origin.x, origin.y, piece.color === "b" && theme.mirrorBlack);
     }
   }
+}
+
+function offsetTarget(t: PixelTarget, dx: number, dy: number): PixelTarget {
+  if (dx === 0 && dy === 0) return t;
+  return { fillRect: (x, y, w, h, color) => t.fillRect(x + dx, y + dy, w, h, color) };
 }
 
 export type { PieceCode };

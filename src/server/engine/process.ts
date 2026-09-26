@@ -20,14 +20,22 @@ export function resolveEngineCommand(env: Record<string, string | undefined> = p
 }
 
 /**
+ * Lc0's own default (0 = "backend suggested") is far slower on Apple's Metal backend: on an M2 Pro,
+ * batches of 32 searched 3-7× more positions per second than the default, for every network tried.
+ */
+export const DEFAULT_LC0_MINIBATCH_SIZE = 32;
+
+/**
  * Leela Chess Zero: LC0_PATH, else `lc0` on PATH. The Homebrew build (`brew install lc0`)
- * ships with a default network next to the binary, which Lc0 finds on its own.
+ * ships with a default network next to the binary, which Lc0 finds on its own; LC0_WEIGHTS
+ * picks another. LC0_MINIBATCH_SIZE overrides the batch size (0 = Lc0's own default).
  */
 export function resolveLc0Command(env: Record<string, string | undefined> = process.env): string[] {
-  if (env.LC0_PATH) return [env.LC0_PATH];
-  const native = findNative("lc0", env.PATH);
-  if (native) return [native];
-  throw new Error("Leela Chess Zero (lc0) not found. Install it with `brew install lc0` or set LC0_PATH.");
+  const binary = env.LC0_PATH || findNative("lc0", env.PATH);
+  if (!binary) throw new Error("Leela Chess Zero (lc0) not found. Install it with `brew install lc0` or set LC0_PATH.");
+  const args = [`--minibatch-size=${env.LC0_MINIBATCH_SIZE || DEFAULT_LC0_MINIBATCH_SIZE}`];
+  if (env.LC0_WEIGHTS) args.push(`--weights=${env.LC0_WEIGHTS}`);
+  return [binary, ...args];
 }
 
 /**

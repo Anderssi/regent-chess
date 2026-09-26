@@ -12,13 +12,15 @@ bun run dev            # http://localhost:3000
 
 On startup the server checks both engines and prints `Lc0 is ready` and `Stockfish is ready`, or the error.
 
-**Lc0.** Uses `LC0_PATH` if set, otherwise `lc0` on your `PATH`. Homebrew's build includes a network (42850, 15×192) that Lc0 finds automatically. To use a different network, point `LC0_PATH` at a wrapper script that passes `--weights=<file>`. Lc0 loads its network with a short warm-up search before each game, so loading time doesn't count against the first move.
+**Lc0.** Uses `LC0_PATH` if set, otherwise `lc0` on your `PATH`. Homebrew's build includes a network (42850, 15×192) that Lc0 finds automatically. To use a different network, set `LC0_WEIGHTS` to its file (see [Choosing a network](#choosing-a-network)). Lc0 loads its network with a short warm-up search before each game, so loading time doesn't count against the first move.
 
 **Stockfish.** The app talks UCI to a Stockfish process. It uses, in order: `STOCKFISH_PATH`, a `stockfish` binary on your `PATH` (`brew install stockfish`), or the bundled Stockfish 19 WASM build (npm `stockfish`) run with Node. Node is needed because the WASM build doesn't run under Bun directly.
 
 | Env var | Default | |
 |---|---|---|
 | `LC0_PATH` | auto | Lc0 binary |
+| `LC0_WEIGHTS` | Homebrew's 42850 | Lc0 network file |
+| `LC0_MINIBATCH_SIZE` | `32` | Positions Lc0 evaluates per GPU batch (`0` = Lc0's own default, which is much slower on Apple silicon) |
 | `LC0_MOVETIME_MS` | `4000` | Lc0's search time per move (under the 5 s limit) |
 | `STOCKFISH_PATH` | auto | Native Stockfish binary |
 | `STOCKFISH_MOVETIME_MS` | `4000` | Stockfish's search time per move (under the 5 s limit) |
@@ -49,10 +51,10 @@ Stockfish doesn't output Elo ratings, so the app keeps two numbers:
 
 ## Board design
 
-The board is isometric pixel art with a wizard's-tower theme. The whole scene is drawn at native resolution (288 × 194 px) and scaled up by a whole number (×2 = 576 × 388 px), so the pixels stay crisp. The board keeps that size on wide screens and only scales down when the screen is narrower.
+The board is isometric pixel art with a wizard's-tower theme. The whole scene is drawn at native resolution (264 × 158 px) and scaled up with nearest-neighbour sampling so the pixels stay sharp. In the game viewer it grows to fill the space beside the move drawer (and the window height), never smaller than ×2 (528 × 316 px) unless the screen itself is narrower.
 
 - `src/client/theme.ts` holds everything visual: tile, slab, sky, candle and highlight colors, the piece palettes for each side, and the piece sprites. Sprites are 16 px wide text grids using the palette keys (`o` outline, `b` base, `s` shade, `h` highlight, `a` accent, `d` shadow, `e` glow). To redesign, edit or copy `wizardTheme`.
-- `src/client/iso/render.ts` is the renderer: isometric geometry, drawing back to front, coordinates engraved on the slab, and the candle and star animation (turned off when the OS asks for reduced motion). It draws onto any `PixelTarget`, which is the canvas in the app and a pixel buffer in tests.
+- `src/client/iso/render.ts` is the renderer: isometric geometry, drawing back to front, coordinates engraved on the slab, and the sky animation: floating candles, twinkling and slowly drifting stars, and the odd shooting star (turned off when the OS asks for reduced motion). It draws onto any `PixelTarget`, which is the canvas in the app and a pixel buffer in tests.
 - Preview a design without starting the app: `bun scripts/render-board.ts "<fen>" board.png white 3` writes a PNG.
 - The canvas is hidden from screen readers. A visually hidden grid lists every square and its piece instead.
 

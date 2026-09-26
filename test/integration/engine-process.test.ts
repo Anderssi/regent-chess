@@ -60,3 +60,15 @@ describe("resolveEngineCommand", () => {
     expect(resolveEngineCommand({ STOCKFISH_PATH: "/opt/sf", PATH: "" })).toEqual(["/opt/sf"]);
   });
 });
+
+describe("resolveLc0Command", () => {
+  test("uses batches of 32 by default and passes a chosen network", async () => {
+    const { resolveLc0Command } = await import("../../src/server/engine/process.ts");
+    expect(resolveLc0Command({ LC0_PATH: "/opt/lc0", PATH: "" })).toEqual(["/opt/lc0", "--minibatch-size=32"]);
+    expect(resolveLc0Command({ LC0_PATH: "/opt/lc0", LC0_WEIGHTS: "/nets/t82.pb.gz", LC0_MINIBATCH_SIZE: "0", PATH: "" })).toEqual([
+      "/opt/lc0",
+      "--minibatch-size=0",
+      "--weights=/nets/t82.pb.gz",
+    ]);
+  });
+});
