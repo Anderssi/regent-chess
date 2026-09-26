@@ -84,12 +84,12 @@ export function describeSearch(fen: string, result: SearchResult, movetimeMs: nu
   };
 }
 
-/** The opponent: Stockfish limited to 1600 Elo, as the brief specifies. */
+/** The opponent: Stockfish limited to an Elo (1600 by default, as the brief specifies). */
 export class StockfishPlayer extends EnginePlayer {
-  static async create(engine: UciEngine, movetimeMs: number): Promise<StockfishPlayer> {
-    await engine.configure({ UCI_LimitStrength: true, UCI_Elo: STOCKFISH_ELO });
+  static async create(engine: UciEngine, movetimeMs: number, elo = STOCKFISH_ELO): Promise<StockfishPlayer> {
+    await engine.configure({ UCI_LimitStrength: true, UCI_Elo: elo });
     await engine.newGame();
-    return new StockfishPlayer(`Stockfish (${STOCKFISH_ELO})`, engine, movetimeMs);
+    return new StockfishPlayer(`Stockfish (${elo})`, engine, movetimeMs);
   }
 }
 

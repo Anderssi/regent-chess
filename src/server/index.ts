@@ -40,7 +40,7 @@ const agents =
 const service = new GameService({
   store,
   createAiPlayer: async () => Lc0Player.create(await lc0Engine.get(), movetime("LC0_MOVETIME_MS"), resolveLc0Command()),
-  createStockfishPlayer: async () => StockfishPlayer.create(await playEngine.get(), movetime("STOCKFISH_MOVETIME_MS")),
+  createStockfishPlayer: async (elo) => StockfishPlayer.create(await playEngine.get(), movetime("STOCKFISH_MOVETIME_MS"), elo),
   getAnalysisEngine: () => analysisEngine.get(),
   analysisDepth: Number(process.env.ANALYSIS_DEPTH ?? 12),
   agents,

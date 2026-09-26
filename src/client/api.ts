@@ -26,7 +26,12 @@ export const api = {
   status: () => request<Status>("/api/status"),
   listGames: (sort: "date" | "elo", order: "asc" | "desc") => request<GameRecord[]>(`/api/games?sort=${sort}&order=${order}`),
   getGame: (id: number) => request<GameRecord>(`/api/games/${id}`),
-  startGame: () => request<GameRecord>("/api/games", { method: "POST" }),
+  startGame: (stockfishElo: number) =>
+    request<GameRecord>("/api/games", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stockfishElo }),
+    }),
   runAgents: (id: number) => request<AgentRun>(`/api/games/${id}/agents`, { method: "POST" }),
   analyse: (pgn: string) =>
     request<PastedAnalysis>("/api/analyse", {

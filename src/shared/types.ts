@@ -156,6 +156,8 @@ export interface GameRecord {
   ratingAfter: number | null;
   error: string | null;
   analysis: GameAnalysis | null;
+  /** Stockfish's strength (UCI_Elo) in this game. */
+  stockfishElo: number;
   /** Our engine's setup, recorded for games played since search data was added. */
   aiSetup: EngineSetup | null;
   agentReports: AgentReport[];

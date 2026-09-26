@@ -117,11 +117,13 @@ test("migrates databases created when our AI was Claude", async () => {
   old.close();
 
   const store = new GameStore(path);
-  expect(store.get(1)).toMatchObject({ aiColor: "black", aiEloEstimate: 1650, black: "Claude", aiSetup: null, agentReports: [] });
+  // Games from before the Stockfish setting were all played at the brief's 1600.
+  expect(store.get(1)).toMatchObject({ aiColor: "black", aiEloEstimate: 1650, black: "Claude", aiSetup: null, agentReports: [], stockfishElo: 1600 });
+  expect(store.create({ aiColor: "black", white: "Stockfish (2400)", black: "Lc0", stockfishElo: 2400 }).stockfishElo).toBe(2400);
   const g = store.create({ aiColor: "white", white: "Lc0", black: "S" });
   store.finish(g.id, { status: "aborted", result: null, termination: null, sanMoves: [], pgn: "", error: "x", ratingBefore: null, ratingAfter: null, searchLog: [] });
   expect(store.searchLog(g.id)).toEqual([]);
-  expect(store.list()).toHaveLength(2);
+  expect(store.list()).toHaveLength(3);
   store.close();
   new GameStore(path).close(); // migrating twice is harmless
   rmSync(dir, { recursive: true, force: true });

@@ -57,7 +57,7 @@ describe("HTTP API", () => {
     const res = await post("/api/games");
     expect(res.status).toBe(201);
     const game = (await res.json()) as GameRecord;
-    expect(game).toMatchObject({ status: "in_progress", aiColor: "white" });
+    expect(game).toMatchObject({ status: "in_progress", aiColor: "white", stockfishElo: 1600 });
 
     expect((await post("/api/games")).status).toBe(409);
     release();
@@ -86,6 +86,14 @@ describe("HTTP API", () => {
     expect(elos).toEqual([...elos].sort((a, b) => b - a));
     const asc = (await (await get("/api/games?sort=elo&order=asc")).json()) as GameRecord[];
     expect(asc.map((g) => g.id)).toEqual(byElo.map((g) => g.id).reverse());
+  });
+
+  test("a Stockfish strength outside its range is a 400, and no game starts", async () => {
+    const before = ((await (await get("/api/games")).json()) as GameRecord[]).length;
+    const res = await post("/api/games", { stockfishElo: 5000 });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("1320 to 3190");
+    expect(((await (await get("/api/games")).json()) as GameRecord[]).length).toBe(before);
   });
 
   test("unknown games are 404", async () => {

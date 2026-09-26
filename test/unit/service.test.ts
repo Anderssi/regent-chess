@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AgentRunner } from "../../src/server/agents/runner.ts";
 import { GameStore } from "../../src/server/db.ts";
-import { AgentRequestError, GameInProgressError, GameService } from "../../src/server/service.ts";
+import { AgentRequestError, GameInProgressError, GameService, InvalidGameSettingsError } from "../../src/server/service.ts";
 import type { Player } from "../../src/server/players.ts";
 import type { EngineSetup } from "../../src/shared/types.ts";
 import { fakeEngine, scriptedPlayer } from "../helpers/fakes.ts";
@@ -11,6 +11,7 @@ const foolsMateWhite = () => ["f3", "g4"];
 const foolsMateBlack = () => ["e5", "Qh4#"];
 
 function makeService(opts: { ai?: () => Player; stockfish?: () => Player; agents?: AgentRunner } = {}) {
+  const stockfishElos: number[] = [];
   const store = new GameStore();
   const { engine } = fakeEngine();
   const ready = engine.init();
@@ -19,7 +20,7 @@ function makeService(opts: { ai?: () => Player; stockfish?: () => Player; agents
     store,
     // By default Lc0 always gets mated: it plays the losing side of Fool's mate.
     createAiPlayer: async () => (opts.ai ?? (() => scriptedPlayer("Lc0", aiColor === "white" ? foolsMateWhite() : ["e5", "Qh4#"])))(),
-    createStockfishPlayer: async () => (opts.stockfish ?? (() => scriptedPlayer("Stockfish", aiColor === "white" ? foolsMateBlack() : ["f3", "g4"])))(),
+    createStockfishPlayer: async (elo) => (stockfishElos.push(elo), opts.stockfish ?? (() => scriptedPlayer("Stockfish", aiColor === "white" ? foolsMateBlack() : ["f3", "g4"])))(),
     getAnalysisEngine: async () => {
       await ready;
       return engine;
@@ -28,7 +29,7 @@ function makeService(opts: { ai?: () => Player; stockfish?: () => Player; agents
     agents: opts.agents,
   });
   const setAiColor = () => (aiColor = service.nextAiColor());
-  return { service, store, setAiColor };
+  return { service, store, setAiColor, stockfishElos };
 }
 
 describe("GameService", () => {
@@ -68,6 +69,28 @@ describe("GameService", () => {
     const g = await service.startGame();
     await service.waitForActiveGame();
     expect(service.getGame(g.id)).toMatchObject({ aiColor: "black", result: "0-1", ratingBefore: 1488, ratingAfter: 1509 });
+  });
+
+  test("Stockfish can be turned up: the chosen Elo is played, stored and used for the rating", async () => {
+    const { service, setAiColor, stockfishElos } = makeService();
+    setAiColor();
+    const g = await service.startGame({ stockfishElo: 2400 });
+    await service.waitForActiveGame();
+    expect(stockfishElos).toEqual([2400]);
+    // Losing to a 2400 costs a 1500 far less than losing to the default 1600 (-12, see above).
+    expect(service.getGame(g.id)).toMatchObject({ stockfishElo: 2400, result: "0-1", ratingBefore: 1500, ratingAfter: 1500 });
+  });
+
+  test("Stockfish plays at 1600 unless asked otherwise, and out-of-range strengths are refused", async () => {
+    const { service, store, setAiColor, stockfishElos } = makeService();
+    for (const stockfishElo of [1000, 3500, 1600.5]) {
+      await expect(service.startGame({ stockfishElo })).rejects.toBeInstanceOf(InvalidGameSettingsError);
+    }
+    expect(store.list()).toHaveLength(0);
+    setAiColor();
+    expect((await service.startGame()).stockfishElo).toBe(1600);
+    await service.waitForActiveGame();
+    expect(stockfishElos).toEqual([1600]);
   });
 
   test("only one game at a time", async () => {

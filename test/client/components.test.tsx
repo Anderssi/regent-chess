@@ -11,7 +11,7 @@ const { render, fireEvent, cleanup } = await import("@testing-library/react");
 const record = (overrides: Partial<GameRecord> = {}): GameRecord => ({
   id: 1, createdAt: "", finishedAt: "", status: "finished", aiColor: "black", white: "S", black: "C",
   result: "0-1", termination: "timeout", sanMoves: [], pgn: "", aiEloEstimate: 1700,
-  ratingBefore: 1500, ratingAfter: 1521, error: null, analysis: null, aiSetup: null, agentReports: [], ...overrides,
+  ratingBefore: 1500, ratingAfter: 1521, error: null, analysis: null, stockfishElo: 1600, aiSetup: null, agentReports: [], ...overrides,
 });
 
 describe("client", () => {

@@ -126,10 +126,12 @@ nav [aria-selected="true"] { background: var(--crimson); color: var(--gold-brigh
 .side-panel h2:first-child, .side-panel h3:first-child { margin-top: 4px; }
 .side-panel .info { padding-bottom: 12px; border-bottom: 2px solid var(--border); overflow-wrap: anywhere; }
 button.wide { width: 100%; }
-.stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 12px 0 0; font-size: 0.95em; }
+.stats { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 12px 0 0; font-size: 0.95em; }
 .stats dt { color: var(--muted); }
 .stats dd { margin: 0; }
 .stats strong { color: var(--gold-bright); }
+/* Numbers in the serif: the pixel font makes a 2 look like an 8. */
+.elo-select { width: 100%; padding: 2px 8px; font-family: var(--serif); font-variant-numeric: tabular-nums; }
 /* Play's panel is short: let it hug its content instead of running the full height. */
 .side-panel.info { align-self: flex-start; max-height: 100%; }
 @media (max-width: 720px) {

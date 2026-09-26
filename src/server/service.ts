@@ -1,5 +1,13 @@
 import type { AgentRun, Color, GameAnalysis, GameRecord } from "../shared/types.ts";
-import { INITIAL_RATING, MOVE_TIME_LIMIT_MS, RATING_K_FACTOR, STOCKFISH_ELO } from "../shared/rules.ts";
+import {
+  INITIAL_RATING,
+  isStockfishElo,
+  MOVE_TIME_LIMIT_MS,
+  RATING_K_FACTOR,
+  STOCKFISH_ELO,
+  STOCKFISH_ELO_MAX,
+  STOCKFISH_ELO_MIN,
+} from "../shared/rules.ts";
 import { parsePastedGame } from "../shared/notation.ts";
 import type { AgentRunner } from "./agents/runner.ts";
 import { analyseGame } from "./analysis.ts";
@@ -12,7 +20,7 @@ import type { Player } from "./players.ts";
 export interface GameServiceDeps {
   store: GameStore;
   createAiPlayer: () => Promise<Player>;
-  createStockfishPlayer: () => Promise<Player>;
+  createStockfishPlayer: (elo: number) => Promise<Player>;
   /** A full-strength engine used only for analysis. */
   getAnalysisEngine: () => Promise<UciEngine>;
   analysisDepth?: number;
@@ -23,6 +31,9 @@ export interface GameServiceDeps {
 }
 
 export class GameInProgressError extends Error {}
+
+/** A start request with settings outside what the app supports. */
+export class InvalidGameSettingsError extends Error {}
 
 export class AgentRequestError extends Error {
   constructor(
@@ -51,16 +62,20 @@ export class GameService {
     return this.active !== null;
   }
 
-  /** Start a game in the background. Only one game runs at a time. */
-  async startGame(): Promise<GameRecord> {
+  /** Start a game in the background, against Stockfish at `stockfishElo`. Only one game runs at a time. */
+  async startGame(settings: { stockfishElo?: number } = {}): Promise<GameRecord> {
     if (this.active) throw new GameInProgressError("A game is already in progress");
+    const stockfishElo = settings.stockfishElo ?? STOCKFISH_ELO;
+    if (!isStockfishElo(stockfishElo)) {
+      throw new InvalidGameSettingsError(`Stockfish's Elo must be a whole number from ${STOCKFISH_ELO_MIN} to ${STOCKFISH_ELO_MAX}`);
+    }
     const ai = await this.deps.createAiPlayer();
-    const stockfish = await this.deps.createStockfishPlayer();
+    const stockfish = await this.deps.createStockfishPlayer(stockfishElo);
     const aiColor = this.nextAiColor();
     const [white, black] = aiColor === "white" ? [ai, stockfish] : [stockfish, ai];
-    const game = this.deps.store.create({ aiColor, white: white.name, black: black.name });
+    const game = this.deps.store.create({ aiColor, white: white.name, black: black.name, stockfishElo });
 
-    this.active = this.runGame(game.id, aiColor, white, black).finally(() => {
+    this.active = this.runGame(game.id, aiColor, white, black, stockfishElo).finally(() => {
       this.active = null;
     });
     return game;
@@ -71,7 +86,7 @@ export class GameService {
     await this.active;
   }
 
-  private async runGame(id: number, aiColor: Color, white: Player, black: Player): Promise<void> {
+  private async runGame(id: number, aiColor: Color, white: Player, black: Player, stockfishElo: number): Promise<void> {
     const { store } = this.deps;
     const outcome = await playGame({
       white,
@@ -86,7 +101,7 @@ export class GameService {
     if (outcome.status === "finished" && outcome.result) {
       ratingBefore = this.currentRating();
       const score = outcome.result === "1/2-1/2" ? 0.5 : (outcome.result === "1-0") === (aiColor === "white") ? 1 : 0;
-      ratingAfter = updateRating(ratingBefore, STOCKFISH_ELO, score, RATING_K_FACTOR);
+      ratingAfter = updateRating(ratingBefore, stockfishElo, score, RATING_K_FACTOR);
     }
     const aiSetup = (aiColor === "white" ? white : black).setup ?? null;
     store.finish(id, { ...outcome, ratingBefore, ratingAfter, aiSetup });

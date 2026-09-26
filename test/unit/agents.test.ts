@@ -85,7 +85,7 @@ describe("the game as the agents see it", () => {
     return {
       id: 7, createdAt: "2026-09-26T07:23:35.445Z", finishedAt: null, status: "finished", aiColor: "white", white: "Lc0", black: "Stockfish (1600)",
       result: "1/2-1/2", termination: "threefold_repetition", sanMoves: MOVES, pgn: "", aiEloEstimate: 2400, ratingBefore: 1610, ratingAfter: 1602,
-      error: null, analysis: await analyseGame(engine, MOVES, { depth: 1 }), aiSetup: null, agentReports: [], ...overrides,
+      error: null, analysis: await analyseGame(engine, MOVES, { depth: 1 }), stockfishElo: 1600, aiSetup: null, agentReports: [], ...overrides,
     };
   };
 

@@ -1,6 +1,6 @@
 # SchackMars
 
-Our AI, **Pluto**, plays chess against Stockfish (limited to 1600 Elo) and builds up a rating. Under the hood Pluto is [Leela Chess Zero](https://lczero.org/) (Lc0); the rest of this README calls it Lc0 when talking about the engine. Games are stored in algebraic notation and can be replayed and analysed with Stockfish, as can any game you paste in.
+Our AI, **Pluto**, plays chess against Stockfish (limited to 1600 Elo by default, adjustable up to 3190) and builds up a rating. Under the hood Pluto is [Leela Chess Zero](https://lczero.org/) (Lc0); the rest of this README calls it Lc0 when talking about the engine. Games are stored in algebraic notation and can be replayed and analysed with Stockfish, as can any game you paste in.
 
 ## Running
 
@@ -42,7 +42,7 @@ On startup the server checks both engines and prints `Lc0 is ready` and `Stockfi
 Standard chess rules come from [chess.js](https://github.com/jhlywa/chess.js). On top of those, the brief adds:
 
 - **5 seconds per move for each player** (`src/shared/rules.ts`). Both engines search for a fixed time under the limit. If a player returns an illegal or unreadable move, it's told which moves were illegal and may try again within the same 5 seconds. A player that has no legal move in by the time limit loses on time. Under FIDE 6.9 it's a draw instead if the opponent has no mating material.
-- **Stockfish is set to 1600 Elo** with `UCI_LimitStrength: true, UCI_Elo: 1600`. Lc0 plays at full strength; the brief doesn't set a limit for it.
+- **Stockfish is set to 1600 Elo** by default, with `UCI_LimitStrength: true, UCI_Elo: 1600`, as the brief specifies. It can be turned up (or down) per game in the Play panel, from 1320 to 3190 (Stockfish's `UCI_Elo` range); each game stores the strength it was played at. Via the API: `POST /api/games` with `{"stockfishElo": 2400}`. Lc0 plays at full strength; the brief doesn't set a limit for it.
 - The game ends automatically on checkmate, stalemate, insufficient material, threefold repetition or the fifty-move rule. chess.js treats the last two as automatic draws, not claims.
 - If a game can't continue for reasons outside chess (an engine that crashes or won't start), it is **aborted**. It isn't rated and doesn't count toward color alternation.
 
@@ -51,7 +51,7 @@ Standard chess rules come from [chess.js](https://github.com/jhlywa/chess.js). O
 Stockfish doesn't output Elo ratings, so the app keeps two numbers:
 
 1. **Estimated Elo per game.** A full-strength Stockfish analyses each game. Lc0's average centipawn loss (ACPL) is mapped with the heuristic `Elo ≈ 3100 · e^(−0.01·ACPL)`. Accuracy uses the Lichess win-percentage model. See `src/server/elo.ts`. This is an estimate and is shown as one.
-2. **Running rating from results.** The standard Elo formula against a 1600 opponent, starting at 1500 with K = 32.
+2. **Running rating from results.** The standard Elo formula against each game's Stockfish strength (1600 unless turned up), starting at 1500 with K = 32.
 
 ## Agent analysis
 

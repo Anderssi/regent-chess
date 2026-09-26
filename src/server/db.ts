@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { STOCKFISH_ELO } from "../shared/rules.ts";
 import {
   AGENT_NAMES,
   type AgentName,
@@ -36,6 +37,7 @@ interface GameRow {
   error: string | null;
   analysis: string | null;
   ai_setup: string | null;
+  stockfish_elo: number | null;
 }
 
 interface ReportRow {
@@ -47,7 +49,7 @@ interface ReportRow {
 
 /** Every games column except search_log, which is large and only read on its own (see searchLog()). */
 const GAME_COLUMNS =
-  "id, created_at, finished_at, status, ai_color, white, black, result, termination, san_moves, pgn, ai_elo_estimate, rating_before, rating_after, error, analysis, ai_setup";
+  "id, created_at, finished_at, status, ai_color, white, black, result, termination, san_moves, pgn, ai_elo_estimate, rating_before, rating_after, error, analysis, ai_setup, stockfish_elo";
 
 export class GameStore {
   private db: Database;
@@ -76,7 +78,8 @@ export class GameStore {
       error TEXT,
       analysis TEXT,
       ai_setup TEXT,
-      search_log TEXT
+      search_log TEXT,
+      stockfish_elo INTEGER
     )`);
     this.db.run(`CREATE TABLE IF NOT EXISTS agent_reports (
       game_id INTEGER NOT NULL REFERENCES games(id),
@@ -94,22 +97,22 @@ export class GameStore {
     if (columns.has("claude_color")) this.db.run("ALTER TABLE games RENAME COLUMN claude_color TO ai_color");
     if (columns.has("claude_elo_estimate")) this.db.run("ALTER TABLE games RENAME COLUMN claude_elo_estimate TO ai_elo_estimate");
     // Engine setup and search data came later. Another process may be adding them at the same moment.
-    for (const column of ["ai_setup", "search_log"]) {
-      if (columns.has(column)) continue;
+    for (const [column, type] of [["ai_setup", "TEXT"], ["search_log", "TEXT"], ["stockfish_elo", "INTEGER"]]) {
+      if (columns.has(column!)) continue;
       try {
-        this.db.run(`ALTER TABLE games ADD COLUMN ${column} TEXT`);
+        this.db.run(`ALTER TABLE games ADD COLUMN ${column} ${type}`);
       } catch (err) {
         if (!String(err).includes("duplicate column")) throw err;
       }
     }
   }
 
-  create(game: { aiColor: Color; white: string; black: string }): GameRecord {
+  create(game: { aiColor: Color; white: string; black: string; stockfishElo?: number }): GameRecord {
     const row = this.db
-      .query<GameRow, [Color, string, string]>(
-        `INSERT INTO games (status, ai_color, white, black) VALUES ('in_progress', ?, ?, ?) RETURNING ${GAME_COLUMNS}`,
+      .query<GameRow, [Color, string, string, number]>(
+        `INSERT INTO games (status, ai_color, white, black, stockfish_elo) VALUES ('in_progress', ?, ?, ?, ?) RETURNING ${GAME_COLUMNS}`,
       )
-      .get(game.aiColor, game.white, game.black)!;
+      .get(game.aiColor, game.white, game.black, game.stockfishElo ?? STOCKFISH_ELO)!;
     return toRecord(row, []);
   }
 
@@ -251,6 +254,8 @@ function toRecord(row: GameRow, reports: ReportRow[]): GameRecord {
     ratingAfter: row.rating_after,
     error: row.error,
     analysis: row.analysis ? JSON.parse(row.analysis) : null,
+    // Games from before the setting existed were all played against the brief's 1600.
+    stockfishElo: row.stockfish_elo ?? STOCKFISH_ELO,
     aiSetup: row.ai_setup ? JSON.parse(row.ai_setup) : null,
     agentReports: reports
       .map((r) => ({ gameId: r.game_id, agent: r.agent, createdAt: r.created_at, ...JSON.parse(r.report) }))

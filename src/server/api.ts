@@ -1,5 +1,5 @@
 import type { GameSort, SortOrder } from "./db.ts";
-import { AgentRequestError, GameInProgressError, type GameService } from "./service.ts";
+import { AgentRequestError, GameInProgressError, InvalidGameSettingsError, type GameService } from "./service.ts";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const error = (message: string, status: number) => json({ error: message }, status);
@@ -19,11 +19,22 @@ export function apiRoutes(service: GameService) {
         const order = url.searchParams.get("order") === "asc" ? "asc" : "desc";
         return json(service.listGames(sort as GameSort, order as SortOrder));
       },
-      POST: async () => {
+      POST: async (req: Request) => {
+        // Optional JSON body: { stockfishElo }. No body plays the brief's default.
+        let settings: { stockfishElo?: number } = {};
+        const body = await req.text();
+        if (body.trim()) {
+          try {
+            settings = JSON.parse(body);
+          } catch {
+            return error("Request body must be JSON", 400);
+          }
+        }
         try {
-          return json(await service.startGame(), 201);
+          return json(await service.startGame({ stockfishElo: settings?.stockfishElo }), 201);
         } catch (err) {
           if (err instanceof GameInProgressError) return error(err.message, 409);
+          if (err instanceof InvalidGameSettingsError) return error(err.message, 400);
           return error(err instanceof Error ? err.message : String(err), 500);
         }
       },
