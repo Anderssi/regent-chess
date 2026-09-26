@@ -316,6 +316,7 @@ export const wizardTheme: BoardTheme = {
 export const spaceTheme: BoardTheme = {
   ...wizardTheme,
   name: "Deep Space",
+  candles: null,
   pieces: {
     w: { o: "#1a1d2e", b: "#e6e9f0", s: "#a9b0c2", h: "#ffffff", a: "#e8a33d", d: "#1c2440", e: "#7fe0ff" },
     b: { o: "#07050c", b: "#3a3552", s: "#24203a", h: "#6a6290", a: "#3fae6a", d: "#0f0c1a", e: "#9dff8a" },
