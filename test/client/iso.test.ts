@@ -199,3 +199,85 @@ describe("upscaling", () => {
     expect(hi[4]!.includes("e")).toBe(true);
   });
 });
+
+describe("move animation", () => {
+  const boardAfter = (fen: string, ...moves: string[]) => {
+    const chess = new Chess(fen);
+    const before = chess.board();
+    for (const m of moves) chess.move(m);
+    return { before, after: chess.board() };
+  };
+
+  test("a plain move glides one piece", async () => {
+    const { diffBoards } = await import("../../src/client/iso/motion.ts");
+    const { before, after } = boardAfter(new Chess().fen(), "Nf3");
+    expect(diffBoards(before, after)).toEqual({ motions: [{ from: "g1", to: "f3", piece: { type: "n", color: "w" } }], ghosts: [] });
+  });
+
+  test("a capture keeps the captured piece as a ghost until the mover lands", async () => {
+    const { diffBoards } = await import("../../src/client/iso/motion.ts");
+    const { before, after } = boardAfter("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", "exd5");
+    const anim = diffBoards(before, after)!;
+    expect(anim.motions).toEqual([{ from: "e4", to: "d5", piece: { type: "p", color: "w" } }]);
+    expect(anim.ghosts).toEqual([{ square: "d5", piece: { type: "p", color: "b" } }]);
+  });
+
+  test("castling moves king and rook together, promotion turns the pawn into the new piece", async () => {
+    const { diffBoards } = await import("../../src/client/iso/motion.ts");
+    const castle = boardAfter("4k3/8/8/8/8/8/8/4K2R w K - 0 1", "O-O");
+    expect(diffBoards(castle.before, castle.after)!.motions.map((m) => `${m.from}-${m.to}`).sort()).toEqual(["e1-g1", "h1-f1"]);
+    const promote = boardAfter("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a8=Q");
+    expect(diffBoards(promote.before, promote.after)!.motions).toEqual([{ from: "a7", to: "a8", piece: { type: "q", color: "w" } }]);
+  });
+
+  test("stepping back animates too, but a jump of several moves does not", async () => {
+    const { diffBoards } = await import("../../src/client/iso/motion.ts");
+    const { before, after } = boardAfter("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", "exd5");
+    // Backwards: the pawn returns to e4 and the captured pawn simply reappears.
+    expect(diffBoards(after, before)).toEqual({ motions: [{ from: "d5", to: "e4", piece: { type: "p", color: "w" } }], ghosts: [] });
+    const jump = boardAfter(new Chess().fen(), "e4", "e5", "Nf3", "Nc6");
+    expect(diffBoards(jump.before, jump.after)).toBeNull();
+  });
+
+  test("the lift-glide-land path starts and ends on the board", async () => {
+    const { motionPath } = await import("../../src/client/iso/motion.ts");
+    expect(motionPath(0)).toEqual({ travel: 0, lift: 0 });
+    expect(motionPath(0.5)).toEqual({ travel: 0.5, lift: 1 });
+    expect(motionPath(1)).toEqual({ travel: 1, lift: 0 });
+  });
+
+  test("mid-move the piece is drawn in the air between its squares, not on its target", async () => {
+    const { diffBoards } = await import("../../src/client/iso/motion.ts");
+    const { before, after } = boardAfter("4k3/8/8/8/8/8/8/R3K3 w - - 0 1", "Ra5");
+    const anim = diffBoards(before, after)!;
+    const still = render("4k3/8/8/R7/8/8/8/4K3 w - - 0 1");
+    const mid = new PixelBuffer(SCENE_W, SCENE_H);
+    renderScene(mid, wizardTheme, { board: after, orientation: "white", animation: { ...anim, progress: 0.5 } });
+    // The rook isn't standing on a5 yet...
+    expect(spriteOutlineMatches(still, "a5", "r", "w")).toBeGreaterThan(0.9);
+    expect(spriteOutlineMatches(mid, "a5", "r", "w")).toBeLessThan(0.3);
+    // ...and a frame after landing is identical to the still position.
+    const done = new PixelBuffer(SCENE_W, SCENE_H);
+    renderScene(done, wizardTheme, { board: after, orientation: "white", animation: { ...anim, progress: 1 } });
+    expect(Buffer.from(done.data).equals(Buffer.from(still.data))).toBe(true);
+  });
+});
+
+describe("capture explosion", () => {
+  test("blows up over the captured square and leaves the board untouched once it's over", () => {
+    const board = new Chess("4k3/8/8/3P4/8/8/8/4K3 w - - 0 1").board();
+    const still = new PixelBuffer(SCENE_W, SCENE_H);
+    renderScene(still, wizardTheme, { board, orientation: "white" });
+    const { col, row } = squareToGrid("d5", "white");
+    const { x, y } = tileOrigin(col, row);
+    const centre = [x + CX, y + CY - 6 * RES] as const;
+    const boom = (progress: number) => {
+      const buf = new PixelBuffer(SCENE_W, SCENE_H);
+      renderScene(buf, wizardTheme, { board, orientation: "white", explosions: [{ square: "d5", piece: { type: "n", color: "b" }, progress }] });
+      return buf;
+    };
+    expect(boom(0.02).get(...centre)).toBe(wizardTheme.explosion.flash);
+    expect(boom(0.2).get(...centre)).not.toBe(still.get(...centre));
+    expect(Buffer.from(boom(1).data).equals(Buffer.from(still.data))).toBe(true);
+  });
+});

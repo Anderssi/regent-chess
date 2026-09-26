@@ -1,13 +1,19 @@
 import { Chess } from "chess.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { canvasTarget } from "../iso/pixels.ts";
+import { diffBoards, type BoardGrid, type MoveAnimation } from "../iso/motion.ts";
 import { renderScene, SCENE_H, SCENE_W } from "../iso/render.ts";
 import { defaultTheme, type BoardTheme, type PieceCode } from "../theme.ts";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const PIECE_NAMES: Record<string, string> = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
-/** Redraw rate for candle flicker and the moving sky. */
+/** Redraw rate for the moving sky; a piece in motion is drawn every frame. */
 const FRAME_MS = 100;
+/** Length of a move's lift, glide and set-down. */
+const MOVE_MS = 450;
+/** A captured piece blows up as the mover lands (the renderer drops it at 85% of the move). */
+const EXPLODE_AT_MS = MOVE_MS * 0.85;
+const EXPLODE_MS = 700;
 
 export interface BoardProps {
   fen: string;
@@ -29,6 +35,8 @@ export function Board({ fen, orientation = "white", lastMove, theme = defaultThe
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const size = useSceneSize(boxRef, theme.scale, !!fullscreen);
+  const prevBoard = useRef<BoardGrid | null>(null);
+  const moving = useRef<{ anim: MoveAnimation; start: number } | null>(null);
   const { board, checkSquare } = useMemo(() => {
     const chess = new Chess(fen);
     const king = chess.inCheck() ? chess.findPiece({ type: "k", color: chess.turn() })[0] ?? null : null;
@@ -39,9 +47,27 @@ export function Board({ fen, orientation = "white", lastMove, theme = defaultThe
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
     const target = canvasTarget(ctx);
-    const draw = (time: number) =>
-      renderScene(target, theme, { board, orientation, lastMove, checkSquare, time, ...size.scene });
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // A new position one move away from the last one animates that move; anything else just appears.
+    if (prevBoard.current && prevBoard.current !== board) {
+      const anim = reducedMotion ? null : diffBoards(prevBoard.current, board);
+      moving.current = anim ? { anim, start: performance.now() } : null;
+    }
+    prevBoard.current = board;
+    const draw = (time: number) => {
+      let animation;
+      let explosions;
+      if (moving.current) {
+        const { anim, start } = moving.current;
+        const elapsed = performance.now() - start;
+        if (elapsed < MOVE_MS) animation = { ...anim, progress: elapsed / MOVE_MS };
+        const boom = (elapsed - EXPLODE_AT_MS) / EXPLODE_MS;
+        if (boom >= 0 && boom < 1) explosions = anim.ghosts.map((g) => ({ ...g, progress: boom }));
+        const end = anim.ghosts.length ? EXPLODE_AT_MS + EXPLODE_MS : MOVE_MS;
+        if (elapsed >= end) moving.current = null;
+      }
+      renderScene(target, theme, { board, orientation, lastMove, checkSquare, time, animation, explosions, ...size.scene });
+    };
     if (reducedMotion) {
       draw(0);
       return;
@@ -49,7 +75,7 @@ export function Board({ fen, orientation = "white", lastMove, theme = defaultThe
     let frame = 0;
     let last = -Infinity;
     const tick = (now: number) => {
-      if (now - last >= FRAME_MS) {
+      if (moving.current || now - last >= FRAME_MS) {
         last = now;
         draw(now || 1);
       }

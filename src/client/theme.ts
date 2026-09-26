@@ -4,6 +4,7 @@
  */
 
 import type { CosmosPalette } from "./iso/cosmos.ts";
+import type { ExplosionPalette } from "./iso/explosion.ts";
 
 export type PieceType = "p" | "n" | "b" | "r" | "q" | "k";
 /** Piece codes: colour (w/b) + piece letter. */
@@ -34,6 +35,8 @@ export interface BoardTheme {
   slab: { left: string; right: string; trim: string; trimShade: string; bottom: string; engraving: string };
   highlight: { lastMove: string; check: string };
   shadow: string;
+  /** Colours of the explosion when a piece is captured. */
+  explosion: ExplosionPalette;
   candles: { wax: string; waxShade: string; flame: string[]; glow: string } | null;
   /** Planets, a black hole and a passing spaceship in the sky, or null for a plain starfield. */
   cosmos: CosmosPalette | null;
@@ -307,6 +310,7 @@ export const wizardTheme: BoardTheme = {
   slab: { left: "#2f2542", right: "#221a31", trim: "#d9a441", trimShade: "#9c6f22", bottom: "#140f1f", engraving: "#e9c46a" },
   highlight: { lastMove: "#ffd76a66", check: "#ff3b3b80" },
   shadow: "#0a061255",
+  explosion: { flash: "#fffbe8", hot: "#fff09a", warm: "#ffa53a", ember: "#d9412b", smoke: "#6a5f7a66" },
   candles: { wax: "#efe6cf", waxShade: "#c4b48f", flame: ["#fff3b0", "#ffd76a", "#ff9b3d"], glow: "#ffd76a1c" },
   cosmos: null,
   pieces: {
