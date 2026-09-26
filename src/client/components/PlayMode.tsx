@@ -82,7 +82,7 @@ export function PlayMode() {
         )}
       </aside>
       {game ? (
-        <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.aiColor} followLatest />
+        <GameViewer sanMoves={game.sanMoves} analysis={game.analysis} orientation={game.aiColor} followLatest live={game.status === "in_progress"} />
       ) : (
         <GameViewer sanMoves={[]} orientation="white" />
       )}

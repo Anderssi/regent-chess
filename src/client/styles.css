@@ -94,7 +94,9 @@ nav [aria-selected="true"] { background: var(--crimson); color: var(--gold-brigh
   .drawer-toggle [aria-hidden] { transform: rotate(-90deg); }
   .viewer-side { width: auto; }
 }
-.nav { display: flex; gap: 6px; align-items: center; justify-content: center; }
+.nav { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; }
+.autoplay { margin-left: 8px; min-width: 104px; }
+.autoplay.playing { background: var(--crimson); color: var(--gold-bright); border-color: var(--gold); }
 .ply-counter { min-width: 80px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ply-info { text-align: center; color: var(--muted); font-style: italic; margin: 4px 0 0; }
 

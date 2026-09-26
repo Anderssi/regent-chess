@@ -59,6 +59,28 @@ describe("client", () => {
     expect(getByText("2 / 3")).toBeTruthy();
   });
 
+  test("GameViewer autoplays through a finished game, and manual steps pause it", async () => {
+    const { render, fireEvent, waitFor } = await import("@testing-library/react");
+    const { GameViewer } = await import("../../src/client/components/GameViewer.tsx");
+    const { getByText, getByLabelText, queryByText } = render(<GameViewer sanMoves={["e4", "e5", "Nf3"]} autoplayMs={20} />);
+    fireEvent.click(getByText("Autoplay"));
+    await waitFor(() => expect(getByText("3 / 3")).toBeTruthy());
+    // It stops at the end; pressing it again replays from the start.
+    await waitFor(() => expect(getByText("Autoplay")).toBeTruthy());
+    fireEvent.click(getByText("Autoplay"));
+    await waitFor(() => expect(getByText("1 / 3")).toBeTruthy());
+    fireEvent.click(getByLabelText("Previous move"));
+    expect(queryByText("❚❚ Pause")).toBeNull();
+    expect(getByText("0 / 3")).toBeTruthy();
+  });
+
+  test("autoplay is hidden while a game is being played live", async () => {
+    const { render } = await import("@testing-library/react");
+    const { GameViewer } = await import("../../src/client/components/GameViewer.tsx");
+    const { queryByText } = render(<GameViewer sanMoves={["e4"]} live followLatest />);
+    expect(queryByText("Autoplay")).toBeNull();
+  });
+
   test("GameViewer's move drawer collapses and expands", async () => {
     const { GameViewer } = await import("../../src/client/components/GameViewer.tsx");
     localStorage.removeItem("regent.drawerOpen");

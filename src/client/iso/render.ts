@@ -3,6 +3,8 @@ import { glyph } from "./font.ts";
 import type { PixelTarget } from "./pixels.ts";
 import { hiResSprite, scale2x } from "./upscale.ts";
 import { drawCosmos, drawFlyby } from "./cosmos.ts";
+import { drawExplosion } from "./explosion.ts";
+import { motionPath, type MoveAnimation, type Piece } from "./motion.ts";
 import { fillCircle, hash, mix } from "./util.ts";
 
 /**
@@ -42,7 +44,14 @@ export interface SceneState {
   /** Top-left of the board scene within the canvas, in native pixels. Defaults to centred. */
   boardX?: number;
   boardY?: number;
+  /** A move being animated: the board already shows the new position; movers glide into it. */
+  animation?: MoveAnimation & { progress: number };
+  /** Captured pieces blowing up, `progress` 0 → 1. */
+  explosions?: { square: string; piece: Piece; progress: number }[];
 }
+
+/** How high a moving piece is lifted, in scene pixels. */
+const LIFT_PX = 14 * RES;
 
 /**
  * Screen grid position of a square: col runs left-to-right along one diagonal, row along the other.
@@ -366,24 +375,60 @@ export function renderScene(target: PixelTarget, theme: BoardTheme, state: Scene
     }
   }
 
-  // Pieces back to front, so nearer pieces overlap farther ones.
+  // Pieces back to front, so nearer pieces overlap farther ones. While a move is animated, movers are
+  // left out here (drawn on top afterwards) and a captured piece stays until the mover lands.
+  const anim = state.animation;
+  const moving = new Set(anim?.motions.map((m) => m.to));
+  const landed = (anim?.progress ?? 1) >= 0.85;
   for (let depth = 0; depth <= 14; depth++) {
     for (let col = 0; col <= depth; col++) {
       const row = depth - col;
       if (col > 7 || row > 7) continue;
       const square = gridToSquare(col, row, state.orientation);
-      const piece = state.board[8 - Number(square[1])]![FILES.indexOf(square[0]!)];
+      const ghost = !landed ? anim?.ghosts.find((g) => g.square === square)?.piece : undefined;
+      const piece = ghost ?? (moving.has(square) ? null : state.board[8 - Number(square[1])]![FILES.indexOf(square[0]!)]);
       if (!piece) continue;
-      const sprite = theme.sprites[piece.type];
       const { x: tx, y: ty } = tileOrigin(col, row);
-      // Shadow: a soft oval under the piece
-      t.fillRect(tx + 11 * RES, ty + 10 * RES, 10 * RES, 2 * RES + 1, theme.shadow);
-      t.fillRect(tx + 9 * RES, ty + 10 * RES + 1, 14 * RES, 2 * RES - 1, theme.shadow);
-      t.fillRect(tx + 12 * RES, ty + 12 * RES, 8 * RES, RES, theme.shadow);
-      const origin = spriteOrigin(col, row, pieceSprite(sprite).length);
-      drawSprite(t, sprite, theme.pieces[piece.color], origin.x, origin.y, piece.color === "b" && theme.mirrorBlack);
+      drawShadow(t, theme, tx, ty, 1);
+      drawPiece(t, theme, piece, tx, ty, 0);
     }
   }
+  for (const m of anim?.motions ?? []) {
+    const a = squareToGrid(m.from, state.orientation);
+    const b = squareToGrid(m.to, state.orientation);
+    const from = tileOrigin(a.col, a.row);
+    const to = tileOrigin(b.col, b.row);
+    const { travel, lift } = motionPath(anim!.progress);
+    const tx = Math.round(from.x + (to.x - from.x) * travel);
+    const ty = Math.round(from.y + (to.y - from.y) * travel);
+    drawShadow(t, theme, tx, ty, 1 - lift * 0.4);
+    drawPiece(t, theme, m.piece, tx, ty, Math.round(lift * LIFT_PX));
+  }
+  for (const e of state.explosions ?? []) {
+    const { col, row } = squareToGrid(e.square, state.orientation);
+    const { x, y } = tileOrigin(col, row);
+    // Centred on the captured piece's body, a little above the tile.
+    const colors = theme.pieces[e.piece.color];
+    const seed = FILES.indexOf(e.square[0]!) * 8 + Number(e.square[1]);
+    drawExplosion(t, theme.explosion, x + TILE_W / 2, y + TILE_H / 2 - 6 * RES, e.progress, RES, seed, [colors.b, colors.a, colors.s]);
+  }
+}
+
+/** A soft oval under a piece standing on the tile at (tx, ty); `size` < 1 shrinks it (piece in the air). */
+function drawShadow(t: PixelTarget, theme: BoardTheme, tx: number, ty: number, size: number): void {
+  const cx = tx + TILE_W / 2;
+  const w = (n: number) => Math.round(n * RES * size);
+  t.fillRect(cx - w(5), ty + 10 * RES, w(10), 2 * RES + 1, theme.shadow);
+  t.fillRect(cx - w(7), ty + 10 * RES + 1, w(14), 2 * RES - 1, theme.shadow);
+  t.fillRect(cx - w(4), ty + 12 * RES, w(8), RES, theme.shadow);
+}
+
+function drawPiece(t: PixelTarget, theme: BoardTheme, piece: { type: PieceType; color: "w" | "b" }, tx: number, ty: number, lift: number): void {
+  const sprite = theme.sprites[piece.type];
+  const height = pieceSprite(sprite).length;
+  const x = tx + TILE_W / 2 - SPRITE_W / 2;
+  const y = ty + TILE_H / 2 + 4 * RES - height - lift;
+  drawSprite(t, sprite, theme.pieces[piece.color], x, y, piece.color === "b" && theme.mirrorBlack);
 }
 
 function offsetTarget(t: PixelTarget, dx: number, dy: number): PixelTarget {
